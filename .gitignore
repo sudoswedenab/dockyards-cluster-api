@@ -1,2 +1,3 @@
 /dockyards-cluster-api
 /vendor
+/config/kustomization.yaml
