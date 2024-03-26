@@ -6,13 +6,19 @@ import (
 	dockyardsv1 "bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util"
 	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
+
+// +kubebuilder:rbac:groups=dockyards.io,resources=nodepools,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dockyards.io,resources=nodes,verbs=create;get;list;patch;watch
+// +kubebuilder:rbac:groups=dockyards.io,resources=nodes/status,verbs=patch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
 const (
 	ClusterAPIMachineReadyCondition = "ClusterAPIMachineReady"
@@ -49,25 +55,31 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	var infrastructure unstructured.Unstructured
-	infrastructure.SetAPIVersion(machine.Spec.InfrastructureRef.APIVersion)
-	infrastructure.SetKind(machine.Spec.InfrastructureRef.Kind)
+	var dockyardsNodePoolName string
 
-	err = r.Get(ctx, client.ObjectKey{Name: machine.Spec.InfrastructureRef.Name, Namespace: machine.Namespace}, &infrastructure)
-	if err != nil {
-		return ctrl.Result{}, err
+	if util.IsControlPlaneMachine(&machine) {
+		var clusterAPICluster clusterv1.Cluster
+		err := r.Get(ctx, client.ObjectKey{Name: machine.Spec.ClusterName, Namespace: machine.Namespace}, &clusterAPICluster)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if clusterAPICluster.Spec.ControlPlaneRef == nil {
+			logger.Info("ignoring machine with empty cluster control plane reference")
+
+			return ctrl.Result{}, nil
+		}
+
+		dockyardsNodePoolName = clusterAPICluster.Spec.ControlPlaneRef.Name
 	}
 
-	annotations := infrastructure.GetAnnotations()
-	clonedFromName, hasAnnotation := annotations[clusterv1.TemplateClonedFromNameAnnotation]
-	if !hasAnnotation {
-		logger.Info("ignoring machine with missing infrastructure annotation")
-
-		return ctrl.Result{}, nil
+	machineDeploymentName, hasLabel := machine.Labels[clusterv1.MachineDeploymentNameLabel]
+	if hasLabel {
+		dockyardsNodePoolName = machineDeploymentName
 	}
 
 	var dockyardsNodePool dockyardsv1.NodePool
-	err = r.Get(ctx, client.ObjectKey{Name: clonedFromName, Namespace: machine.Namespace}, &dockyardsNodePool)
+	err = r.Get(ctx, client.ObjectKey{Name: dockyardsNodePoolName, Namespace: machine.Namespace}, &dockyardsNodePool)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -113,8 +125,7 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				condition.Reason = "ReadyReasonNotNeeded"
 			}
 
-			changed := meta.SetStatusCondition(&dockyardsNode.Status.Conditions, condition)
-			logger.Info("set status condition", "changed", changed)
+			meta.SetStatusCondition(&dockyardsNode.Status.Conditions, condition)
 		}
 
 		return nil
