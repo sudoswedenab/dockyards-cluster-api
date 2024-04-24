@@ -134,6 +134,10 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
+	if operationResult == controllerutil.OperationResultCreated {
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	if operationResult != controllerutil.OperationResultNone {
 		logger.Info("reconciled dockyards node", "result", operationResult)
 	}
