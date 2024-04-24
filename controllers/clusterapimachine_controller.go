@@ -49,12 +49,6 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	if machine.Status.NodeRef == nil {
-		logger.Info("ignoring machine with empty node reference")
-
-		return ctrl.Result{}, nil
-	}
-
 	var dockyardsNodePoolName string
 
 	if util.IsControlPlaneMachine(&machine) {
@@ -78,6 +72,12 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		dockyardsNodePoolName = machineDeploymentName
 	}
 
+	if dockyardsNodePoolName == "" {
+		logger.Info("unable to find dockyards node pool from machine")
+
+		return ctrl.Result{}, nil
+	}
+
 	var dockyardsNodePool dockyardsv1.NodePool
 	err = r.Get(ctx, client.ObjectKey{Name: dockyardsNodePoolName, Namespace: machine.Namespace}, &dockyardsNodePool)
 	if err != nil {
@@ -86,7 +86,7 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	dockyardsNode := dockyardsv1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      machine.Name,
+			Name:      machine.Spec.InfrastructureRef.Name,
 			Namespace: machine.Namespace,
 		},
 	}
