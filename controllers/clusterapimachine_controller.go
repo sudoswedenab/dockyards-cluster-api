@@ -1,10 +1,11 @@
 package controllers
 
 import (
+	"cmp"
 	"context"
 
 	dockyardsv1 "bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha1"
-	"k8s.io/apimachinery/pkg/api/meta"
+	"github.com/fluxcd/pkg/runtime/conditions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
@@ -114,19 +115,43 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		readyCondition := capiconditions.Get(&machine, clusterv1.ReadyCondition)
 		if readyCondition != nil {
 			condition := metav1.Condition{
-				Type:               dockyardsv1.ReadyCondition,
-				Reason:             readyCondition.Reason,
+				Type:               MachineReadyCondition,
+				Reason:             cmp.Or(readyCondition.Reason, NoReasonReason),
 				Message:            readyCondition.Message,
 				LastTransitionTime: readyCondition.LastTransitionTime,
 				Status:             metav1.ConditionStatus(readyCondition.Status),
 			}
 
-			if readyCondition.Reason == "" {
-				condition.Reason = "ReadyReasonNotNeeded"
+			conditions.Set(&dockyardsNode, &condition)
+		} else {
+			conditions.MarkFalse(&dockyardsNode, MachineReadyCondition, WaitingForMachineReadyConditionReason, "")
+		}
+
+		machineNodeHealthyCondition := capiconditions.Get(&machine, clusterv1.MachineNodeHealthyCondition)
+		if machineNodeHealthyCondition != nil {
+			condition := metav1.Condition{
+				Type:               string(clusterv1.MachineNodeHealthyCondition),
+				Reason:             cmp.Or(machineNodeHealthyCondition.Reason, NoReasonReason),
+				Message:            machineNodeHealthyCondition.Message,
+				LastTransitionTime: machineNodeHealthyCondition.LastTransitionTime,
+				Status:             metav1.ConditionStatus(machineNodeHealthyCondition.Status),
 			}
 
-			meta.SetStatusCondition(&dockyardsNode.Status.Conditions, condition)
+			conditions.Set(&dockyardsNode, &condition)
+		} else {
+			conditions.MarkFalse(&dockyardsNode, string(clusterv1.MachineNodeHealthyCondition), WaitingForNodeHealthyConditionReason, "")
 		}
+
+		summaryConditions := []string{
+			MachineReadyCondition,
+			string(clusterv1.MachineNodeHealthyCondition),
+		}
+
+		conditions.SetSummary(
+			&dockyardsNode,
+			dockyardsv1.ReadyCondition,
+			conditions.WithConditions(summaryConditions...),
+		)
 
 		return nil
 	})
