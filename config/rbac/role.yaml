@@ -9,8 +9,10 @@ rules:
   resources:
   - clusters
   verbs:
+  - create
   - get
   - list
+  - patch
   - watch
 - apiGroups:
   - cluster.x-k8s.io

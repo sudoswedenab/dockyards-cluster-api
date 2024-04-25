@@ -1,26 +1,32 @@
 package controllers
 
 import (
+	"cmp"
 	"context"
 
 	dockyardsv1 "bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha1"
 	semverv3 "github.com/Masterminds/semver/v3"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"github.com/fluxcd/pkg/runtime/conditions"
+	"github.com/fluxcd/pkg/runtime/patch"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // +kubebuilder:rbac:groups=dockyards.io,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dockyards.io,resources=clusters/status,verbs=patch
-// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=create;get;list;patch;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch
 
 type DockyardsClusterReconciler struct {
 	client.Client
 }
 
-func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reterr error) {
 	logger := ctrl.LoggerFrom(ctx)
 
 	var dockyardsCluster dockyardsv1.Cluster
@@ -33,30 +39,77 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
-	var clusterAPICluster clusterv1.Cluster
-	err = r.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &clusterAPICluster)
+	patchHelper, err := patch.NewHelper(&dockyardsCluster, r.Client)
 	if err != nil {
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, err
 	}
 
-	if apierrors.IsNotFound(err) {
-		logger.Info("ignoring cluster-api cluster without dockyards cluster")
+	defer func() {
+		err := patchDockyardsCluster(ctx, &dockyardsCluster, patchHelper)
+		if err != nil {
+			result = ctrl.Result{}
+			reterr = kerrors.NewAggregate([]error{reterr, err})
+		}
+	}()
 
-		return ctrl.Result{}, nil
+	cluster := clusterv1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      dockyardsCluster.Name,
+			Namespace: dockyardsCluster.Namespace,
+		},
+	}
+
+	operationResult, err := controllerutil.CreateOrPatch(ctx, r.Client, &cluster, func() error {
+		controller := true
+
+		cluster.OwnerReferences = []metav1.OwnerReference{
+			{
+				APIVersion:         dockyardsv1.GroupVersion.String(),
+				Kind:               dockyardsv1.ClusterKind,
+				Name:               dockyardsCluster.Name,
+				UID:                dockyardsCluster.UID,
+				Controller:         &controller,
+				BlockOwnerDeletion: &controller,
+			},
+		}
+
+		return nil
+	})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if operationResult != controllerutil.OperationResultNone {
+		logger.Info("reconciled cluster-api cluster", "result", operationResult)
+	}
+
+	clusterReadyCondition := capiconditions.Get(&cluster, clusterv1.ReadyCondition)
+	if clusterReadyCondition != nil {
+		condition := metav1.Condition{
+			Type:               ClusterReadyCondition,
+			Status:             metav1.ConditionStatus(clusterReadyCondition.Status),
+			Reason:             cmp.Or(clusterReadyCondition.Reason, NoReasonReason),
+			Message:            clusterReadyCondition.Message,
+			LastTransitionTime: clusterReadyCondition.LastTransitionTime,
+		}
+
+		conditions.Set(&dockyardsCluster, &condition)
+	} else {
+		conditions.MarkFalse(&dockyardsCluster, ClusterReadyCondition, WaitingForClusterReadyConditionReason, "")
 	}
 
 	matchingLabels := client.MatchingLabels{
-		clusterv1.ClusterNameLabel: clusterAPICluster.Name,
+		clusterv1.ClusterNameLabel: cluster.Name,
 	}
 
-	var clusterAPIMachineList clusterv1.MachineList
-	err = r.List(ctx, &clusterAPIMachineList, matchingLabels, client.InNamespace(clusterAPICluster.Namespace))
+	var machineList clusterv1.MachineList
+	err = r.List(ctx, &machineList, matchingLabels, client.InNamespace(cluster.Namespace))
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	clusterVersion := semverv3.New(3, 2, 1, "", "")
-	for _, clusterAPIMachine := range clusterAPIMachineList.Items {
+	for _, clusterAPIMachine := range machineList.Items {
 		if clusterAPIMachine.Spec.Version == nil {
 			continue
 		}
@@ -64,6 +117,7 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		machineVersion, err := semverv3.NewVersion(*clusterAPIMachine.Spec.Version)
 		if err != nil {
 			logger.Error(err, "error parsing version as semver")
+
 			continue
 		}
 
@@ -72,16 +126,7 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	if dockyardsCluster.Status.Version != clusterVersion.String() {
-		patch := client.MergeFrom(dockyardsCluster.DeepCopy())
-
-		dockyardsCluster.Status.Version = clusterVersion.String()
-
-		err := r.Status().Patch(ctx, &dockyardsCluster, patch)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-	}
+	dockyardsCluster.Status.Version = clusterVersion.String()
 
 	return ctrl.Result{}, nil
 }
@@ -92,10 +137,27 @@ func (r *DockyardsClusterReconciler) SetupWithManager(m ctrl.Manager) error {
 	_ = clusterv1.AddToScheme(scheme)
 	_ = dockyardsv1.AddToScheme(scheme)
 
-	err := ctrl.NewControllerManagedBy(m).For(&clusterv1.Cluster{}).Complete(r)
+	err := ctrl.NewControllerManagedBy(m).
+		For(&dockyardsv1.Cluster{}).
+		Owns(&clusterv1.Cluster{}).
+		Complete(r)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func patchDockyardsCluster(ctx context.Context, dockyardsCluster *dockyardsv1.Cluster, patchHelper *patch.Helper, opts ...patch.Option) error {
+	summaryConditions := []string{
+		ClusterReadyCondition,
+	}
+
+	conditions.SetSummary(
+		dockyardsCluster,
+		dockyardsv1.ReadyCondition,
+		conditions.WithConditions(summaryConditions...),
+	)
+
+	return patchHelper.Patch(ctx, dockyardsCluster, opts...)
 }
