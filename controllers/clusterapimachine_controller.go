@@ -20,7 +20,7 @@ import (
 // +kubebuilder:rbac:groups=dockyards.io,resources=nodepools,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dockyards.io,resources=nodes,verbs=create;delete;get;list;patch;watch
 // +kubebuilder:rbac:groups=dockyards.io,resources=nodes/status,verbs=patch
-// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;patch;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
 const (
