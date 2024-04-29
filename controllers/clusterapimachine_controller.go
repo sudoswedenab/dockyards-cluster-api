@@ -6,7 +6,9 @@ import (
 
 	dockyardsv1 "bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha1"
 	"github.com/fluxcd/pkg/runtime/conditions"
+	"github.com/fluxcd/pkg/runtime/patch"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
 	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
@@ -16,20 +18,20 @@ import (
 )
 
 // +kubebuilder:rbac:groups=dockyards.io,resources=nodepools,verbs=get;list;watch
-// +kubebuilder:rbac:groups=dockyards.io,resources=nodes,verbs=create;get;list;patch;watch
+// +kubebuilder:rbac:groups=dockyards.io,resources=nodes,verbs=create;delete;get;list;patch;watch
 // +kubebuilder:rbac:groups=dockyards.io,resources=nodes/status,verbs=patch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
 const (
-	ClusterAPIMachineReadyCondition = "ClusterAPIMachineReady"
+	ClusterAPIMachineFinalizer = "clusterapi.dockyards.io/finalizer"
 )
 
 type ClusterAPIMachineReconciler struct {
 	client.Client
 }
 
-func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reterr error) {
 	logger := ctrl.LoggerFrom(ctx)
 
 	var machine clusterv1.Machine
@@ -46,6 +48,29 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	if machine.Spec.InfrastructureRef.Name == "" {
 		logger.Info("ignoring machine with empty infrastructure ref")
+
+		return ctrl.Result{}, nil
+	}
+
+	patchHelper, err := patch.NewHelper(&machine, r.Client)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	defer func() {
+		err := patchHelper.Patch(ctx, &machine)
+		if err != nil {
+			result = ctrl.Result{}
+			reterr = kerrors.NewAggregate([]error{reterr, err})
+		}
+	}()
+
+	if !machine.DeletionTimestamp.IsZero() {
+		return r.reconcileDelete(ctx, &machine)
+	}
+
+	if !controllerutil.ContainsFinalizer(&machine, ClusterAPIMachineFinalizer) {
+		controllerutil.AddFinalizer(&machine, ClusterAPIMachineFinalizer)
 
 		return ctrl.Result{}, nil
 	}
@@ -165,6 +190,28 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	if operationResult != controllerutil.OperationResultNone {
 		logger.Info("reconciled dockyards node", "result", operationResult)
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ClusterAPIMachineReconciler) reconcileDelete(ctx context.Context, machine *clusterv1.Machine) (ctrl.Result, error) {
+	if machine.Status.NodeRef != nil {
+		dockyardsNode := dockyardsv1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      machine.Status.NodeRef.Name,
+				Namespace: machine.Namespace,
+			},
+		}
+
+		err := r.Delete(ctx, &dockyardsNode)
+		if client.IgnoreNotFound(err) != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	if controllerutil.ContainsFinalizer(machine, ClusterAPIMachineFinalizer) {
+		controllerutil.RemoveFinalizer(machine, ClusterAPIMachineFinalizer)
 	}
 
 	return ctrl.Result{}, nil
