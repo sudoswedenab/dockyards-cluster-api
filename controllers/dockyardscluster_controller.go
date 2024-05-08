@@ -31,8 +31,8 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	var dockyardsCluster dockyardsv1.Cluster
 	err := r.Get(ctx, req.NamespacedName, &dockyardsCluster)
-	if client.IgnoreNotFound(err) != nil {
-		return ctrl.Result{}, err
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	if !dockyardsCluster.DeletionTimestamp.IsZero() {
@@ -98,6 +98,21 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		conditions.MarkFalse(&dockyardsCluster, ClusterReadyCondition, WaitingForClusterReadyConditionReason, "")
 	}
 
+	controlPlaneReadyCondition := capiconditions.Get(&cluster, clusterv1.ControlPlaneReadyCondition)
+	if controlPlaneReadyCondition != nil {
+		condition := metav1.Condition{
+			Type:               ClusterControlPlaneReadyCondition,
+			Status:             metav1.ConditionStatus(controlPlaneReadyCondition.Status),
+			Reason:             cmp.Or(controlPlaneReadyCondition.Reason, NoReasonReason),
+			Message:            controlPlaneReadyCondition.Message,
+			LastTransitionTime: controlPlaneReadyCondition.LastTransitionTime,
+		}
+
+		conditions.Set(&dockyardsCluster, &condition)
+	} else {
+		conditions.MarkFalse(&dockyardsCluster, ClusterControlPlaneReadyCondition, WaitingForClusterControlPlaneReadyConditionReason, "")
+	}
+
 	matchingLabels := client.MatchingLabels{
 		clusterv1.ClusterNameLabel: cluster.Name,
 	}
@@ -151,6 +166,7 @@ func (r *DockyardsClusterReconciler) SetupWithManager(m ctrl.Manager) error {
 func patchDockyardsCluster(ctx context.Context, dockyardsCluster *dockyardsv1.Cluster, patchHelper *patch.Helper, opts ...patch.Option) error {
 	summaryConditions := []string{
 		ClusterReadyCondition,
+		ClusterControlPlaneReadyCondition,
 	}
 
 	conditions.SetSummary(
