@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"context"
 
-	dockyardsv1 "bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha1"
+	dockyardsv1 "bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha2"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -131,7 +131,7 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			dockyardsNode.Labels = make(map[string]string)
 		}
 
-		dockyardsNode.Labels[dockyardsv1.NodePoolNameLabel] = dockyardsNodePool.Name
+		dockyardsNode.Labels[dockyardsv1.LabelNodePoolName] = dockyardsNodePool.Name
 
 		if machine.Spec.ProviderID != nil {
 			dockyardsNode.Status.CloudServiceID = *machine.Spec.ProviderID
