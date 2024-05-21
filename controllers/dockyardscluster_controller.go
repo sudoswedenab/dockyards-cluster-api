@@ -141,7 +141,7 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	dockyardsCluster.Status.Version = clusterVersion.String()
+	dockyardsCluster.Status.Version = clusterVersion.Original()
 
 	return ctrl.Result{}, nil
 }
