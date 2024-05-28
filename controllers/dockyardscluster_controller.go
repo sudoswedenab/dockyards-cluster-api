@@ -19,6 +19,7 @@ import (
 
 // +kubebuilder:rbac:groups=dockyards.io,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dockyards.io,resources=clusters/status,verbs=patch
+// +kubebuilder:rbac:groups=dockyards.io,resources=deployments,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=create;get;list;patch;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch
 
@@ -117,6 +118,32 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		clusterv1.ClusterNameLabel: cluster.Name,
 	}
 
+	var deploymentList dockyardsv1.DeploymentList
+	err = r.List(ctx, &deploymentList, matchingLabels, client.InNamespace(cluster.Namespace))
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	clusterComponentsReady := true
+	for _, deployment := range deploymentList.Items {
+		if !deployment.Spec.ClusterComponent {
+			continue
+		}
+
+		if conditions.IsTrue(&deployment, dockyardsv1.ReadyCondition) {
+			continue
+		}
+
+		conditions.MarkFalse(&dockyardsCluster, ClusterComponentsReadyCondition, WaitingForClusterComponentReadyConditionReason, deployment.Name)
+		clusterComponentsReady = false
+
+		break
+	}
+
+	if clusterComponentsReady {
+		conditions.MarkTrue(&dockyardsCluster, ClusterComponentsReadyCondition, NoReasonReason, "")
+	}
+
 	var machineList clusterv1.MachineList
 	err = r.List(ctx, &machineList, matchingLabels, client.InNamespace(cluster.Namespace))
 	if err != nil {
@@ -167,6 +194,7 @@ func patchDockyardsCluster(ctx context.Context, dockyardsCluster *dockyardsv1.Cl
 	summaryConditions := []string{
 		ClusterReadyCondition,
 		ClusterControlPlaneReadyCondition,
+		ClusterComponentsReadyCondition,
 	}
 
 	conditions.SetSummary(
