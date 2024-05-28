@@ -115,7 +115,7 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	matchingLabels := client.MatchingLabels{
-		clusterv1.ClusterNameLabel: cluster.Name,
+		dockyardsv1.LabelClusterName: dockyardsCluster.Name,
 	}
 
 	var deploymentList dockyardsv1.DeploymentList
@@ -142,6 +142,10 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	if clusterComponentsReady {
 		conditions.MarkTrue(&dockyardsCluster, ClusterComponentsReadyCondition, NoReasonReason, "")
+	}
+
+	matchingLabels = client.MatchingLabels{
+		clusterv1.ClusterNameLabel: cluster.Name,
 	}
 
 	var machineList clusterv1.MachineList
