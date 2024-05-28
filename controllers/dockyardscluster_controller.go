@@ -9,12 +9,14 @@ import (
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 )
 
 // +kubebuilder:rbac:groups=dockyards.io,resources=clusters,verbs=get;list;watch
@@ -177,6 +179,27 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{}, nil
 }
 
+func (r *DockyardsClusterReconciler) dockyardsDeploymentToDockyardsCluster(ctx context.Context, o client.Object) []ctrl.Request {
+	dockyardsDeployment, ok := o.(*dockyardsv1.Deployment)
+	if !ok {
+		return nil
+	}
+
+	clusterName, has := dockyardsDeployment.Labels[dockyardsv1.LabelClusterName]
+	if !has {
+		return nil
+	}
+
+	return []ctrl.Request{
+		{
+			NamespacedName: types.NamespacedName{
+				Name:      clusterName,
+				Namespace: dockyardsDeployment.Namespace,
+			},
+		},
+	}
+}
+
 func (r *DockyardsClusterReconciler) SetupWithManager(m ctrl.Manager) error {
 	scheme := m.GetScheme()
 
@@ -186,6 +209,10 @@ func (r *DockyardsClusterReconciler) SetupWithManager(m ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(m).
 		For(&dockyardsv1.Cluster{}).
 		Owns(&clusterv1.Cluster{}).
+		Watches(
+			&dockyardsv1.Deployment{},
+			handler.EnqueueRequestsFromMapFunc(r.dockyardsDeploymentToDockyardsCluster),
+		).
 		Complete(r)
 	if err != nil {
 		return err
