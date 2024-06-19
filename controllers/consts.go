@@ -4,7 +4,7 @@ const (
 	MachineReadyCondition             string = "MachineReady"
 	ClusterReadyCondition             string = "ClusterReady"
 	ClusterControlPlaneReadyCondition string = "ClusterControlPlaneReady"
-	ClusterComponentsReadyCondition   string = "ClusterComponentsReadyCondition"
+	ClusterComponentsReadyCondition   string = "ClusterComponentsReady"
 
 	WaitingForMachineReadyConditionReason             string = "WaitingForMachineReadyCondition"
 	WaitingForNodeHealthyConditionReason              string = "WaitingForNodeHealthyCondition"
