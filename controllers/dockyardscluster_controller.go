@@ -136,7 +136,7 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			continue
 		}
 
-		conditions.MarkFalse(&dockyardsCluster, ClusterComponentsReadyCondition, WaitingForClusterComponentReadyConditionReason, deployment.Name)
+		conditions.MarkFalse(&dockyardsCluster, ClusterComponentsReadyCondition, WaitingForClusterComponentReadyConditionReason, "%s", deployment.Name)
 		clusterComponentsReady = false
 
 		break
