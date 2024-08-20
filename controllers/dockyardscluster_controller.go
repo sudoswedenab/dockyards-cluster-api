@@ -179,8 +179,8 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{}, nil
 }
 
-func (r *DockyardsClusterReconciler) dockyardsDeploymentToDockyardsCluster(ctx context.Context, o client.Object) []ctrl.Request {
-	dockyardsDeployment, ok := o.(*dockyardsv1.Deployment)
+func (r *DockyardsClusterReconciler) dockyardsDeploymentToDockyardsCluster(_ context.Context, obj client.Object) []ctrl.Request {
+	dockyardsDeployment, ok := obj.(*dockyardsv1.Deployment)
 	if !ok {
 		return nil
 	}
