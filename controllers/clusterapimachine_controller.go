@@ -137,6 +137,10 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			dockyardsNode.Status.CloudServiceID = *machine.Spec.ProviderID
 		}
 
+		if machine.Status.NodeInfo != nil {
+			dockyardsNode.Status.SystemInfo = machine.Status.NodeInfo
+		}
+
 		readyCondition := capiconditions.Get(&machine, clusterv1.ReadyCondition)
 		if readyCondition != nil {
 			condition := metav1.Condition{

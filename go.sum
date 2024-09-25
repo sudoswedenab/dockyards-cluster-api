@@ -1,5 +1,5 @@
-bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20240524190003-d03b80a331f2 h1:S5C3E68CKM+cSQ1YFPfj8a+jSk/uYInEdS6g9JaAZgY=
-bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20240524190003-d03b80a331f2/go.mod h1:fAPf/0ZQt19CyN3vAvBVK/ZXqTAWPihKikI+0ylvlMg=
+bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20240925084959-a645a38eba0d h1:6V6RW9vrK2gN5tWf+Cc3y3Xnu6jdztIEHTIhNM+kK5o=
+bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20240925084959-a645a38eba0d/go.mod h1:fAPf/0ZQt19CyN3vAvBVK/ZXqTAWPihKikI+0ylvlMg=
 github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24 h1:bvDV9vkmnHYOMsOr4WLk+Vo07yKIzd94sVoIqshQ4bU=
 github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24/go.mod h1:8o94RPi1/7XTJvwPpRSzSUedZrtlirdB3r9Z20bi2f8=
 github.com/Masterminds/semver/v3 v3.2.0 h1:3MEsd0SM6jqZojhjLWWeBY+Kcjy9i6MQAeY7YgDP83g=
