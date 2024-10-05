@@ -91,7 +91,7 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		condition := metav1.Condition{
 			Type:               ClusterReadyCondition,
 			Status:             metav1.ConditionStatus(clusterReadyCondition.Status),
-			Reason:             cmp.Or(clusterReadyCondition.Reason, ReadyReasonNotRequiredReason),
+			Reason:             cmp.Or(clusterReadyCondition.Reason, dockyardsv1.ReadyReason),
 			Message:            clusterReadyCondition.Message,
 			LastTransitionTime: clusterReadyCondition.LastTransitionTime,
 		}
@@ -106,7 +106,7 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		condition := metav1.Condition{
 			Type:               ClusterControlPlaneReadyCondition,
 			Status:             metav1.ConditionStatus(controlPlaneReadyCondition.Status),
-			Reason:             cmp.Or(controlPlaneReadyCondition.Reason, ReadyReasonNotRequiredReason),
+			Reason:             cmp.Or(controlPlaneReadyCondition.Reason, dockyardsv1.ReadyReason),
 			Message:            controlPlaneReadyCondition.Message,
 			LastTransitionTime: controlPlaneReadyCondition.LastTransitionTime,
 		}
@@ -143,7 +143,7 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if clusterComponentsReady {
-		conditions.MarkTrue(&dockyardsCluster, ClusterComponentsReadyCondition, ReadyReasonNotRequiredReason, "")
+		conditions.MarkTrue(&dockyardsCluster, ClusterComponentsReadyCondition, dockyardsv1.ReadyReason, "")
 	}
 
 	matchingLabels = client.MatchingLabels{

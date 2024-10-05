@@ -145,7 +145,7 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if readyCondition != nil {
 			condition := metav1.Condition{
 				Type:               MachineReadyCondition,
-				Reason:             cmp.Or(readyCondition.Reason, ReadyReasonNotRequiredReason),
+				Reason:             cmp.Or(readyCondition.Reason, dockyardsv1.ReadyReason),
 				Message:            readyCondition.Message,
 				LastTransitionTime: readyCondition.LastTransitionTime,
 				Status:             metav1.ConditionStatus(readyCondition.Status),
@@ -160,7 +160,7 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if machineNodeHealthyCondition != nil {
 			condition := metav1.Condition{
 				Type:               string(clusterv1.MachineNodeHealthyCondition),
-				Reason:             cmp.Or(machineNodeHealthyCondition.Reason, ReadyReasonNotRequiredReason),
+				Reason:             cmp.Or(machineNodeHealthyCondition.Reason, dockyardsv1.ReadyReason),
 				Message:            machineNodeHealthyCondition.Message,
 				LastTransitionTime: machineNodeHealthyCondition.LastTransitionTime,
 				Status:             metav1.ConditionStatus(machineNodeHealthyCondition.Status),
