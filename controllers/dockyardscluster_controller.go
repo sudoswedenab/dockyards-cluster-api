@@ -1,13 +1,13 @@
 package controllers
 
 import (
-	"cmp"
 	"context"
 
 	dockyardsv1 "bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha2"
 	semverv3 "github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -91,9 +91,13 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		condition := metav1.Condition{
 			Type:               ClusterReadyCondition,
 			Status:             metav1.ConditionStatus(clusterReadyCondition.Status),
-			Reason:             cmp.Or(clusterReadyCondition.Reason, dockyardsv1.ReadyReason),
-			Message:            clusterReadyCondition.Message,
+			Reason:             dockyardsv1.ReadyReason,
+			Message:            clusterReadyCondition.Reason,
 			LastTransitionTime: clusterReadyCondition.LastTransitionTime,
+		}
+
+		if clusterReadyCondition.Status != corev1.ConditionTrue {
+			condition.Reason = ClusterNotReadyReason
 		}
 
 		conditions.Set(&dockyardsCluster, &condition)
@@ -106,9 +110,13 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		condition := metav1.Condition{
 			Type:               ClusterControlPlaneReadyCondition,
 			Status:             metav1.ConditionStatus(controlPlaneReadyCondition.Status),
-			Reason:             cmp.Or(controlPlaneReadyCondition.Reason, dockyardsv1.ReadyReason),
-			Message:            controlPlaneReadyCondition.Message,
+			Reason:             dockyardsv1.ReadyReason,
+			Message:            controlPlaneReadyCondition.Reason,
 			LastTransitionTime: controlPlaneReadyCondition.LastTransitionTime,
+		}
+
+		if controlPlaneReadyCondition.Status != corev1.ConditionTrue {
+			condition.Reason = ClusterControlPlaneNotReadyReason
 		}
 
 		conditions.Set(&dockyardsCluster, &condition)

@@ -11,4 +11,6 @@ const (
 	WaitingForClusterReadyConditionReason             string = "WaitingForClusterReadyCondition"
 	WaitingForClusterControlPlaneReadyConditionReason string = "WaitingForClusterControlPlaneReadyCondition"
 	WaitingForClusterComponentReadyConditionReason    string = "WaitingForClusterComponentReadyCondition"
+	ClusterNotReadyReason                             string = "ClusterNotReady"
+	ClusterControlPlaneNotReadyReason                 string = "ClusterControlPlaneNotReady"
 )
