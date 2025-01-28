@@ -19,11 +19,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 )
 
-// +kubebuilder:rbac:groups=dockyards.io,resources=clusters,verbs=get;list;watch
-// +kubebuilder:rbac:groups=dockyards.io,resources=clusters/status,verbs=patch
-// +kubebuilder:rbac:groups=dockyards.io,resources=deployments,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=create;get;list;patch;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dockyards.io,resources=clusters/status,verbs=patch
+// +kubebuilder:rbac:groups=dockyards.io,resources=clusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dockyards.io,resources=workloads,verbs=get;list;watch
 
 var (
 	InvalidReasonCharacters = regexp.MustCompile("[^A-Za-z0-9_,:]")
@@ -142,23 +142,23 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		dockyardsv1.LabelClusterName: dockyardsCluster.Name,
 	}
 
-	var deploymentList dockyardsv1.DeploymentList
-	err = r.List(ctx, &deploymentList, matchingLabels, client.InNamespace(cluster.Namespace))
+	var workloadList dockyardsv1.WorkloadList
+	err = r.List(ctx, &workloadList, matchingLabels, client.InNamespace(cluster.Namespace))
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	clusterComponentsReady := true
-	for _, deployment := range deploymentList.Items {
-		if !deployment.Spec.ClusterComponent {
+	for _, workload := range workloadList.Items {
+		if !workload.Spec.ClusterComponent {
 			continue
 		}
 
-		if conditions.IsTrue(&deployment, dockyardsv1.ReadyCondition) {
+		if conditions.IsTrue(&workload, dockyardsv1.ReadyCondition) {
 			continue
 		}
 
-		conditions.MarkFalse(&dockyardsCluster, ClusterComponentsReadyCondition, WaitingForClusterComponentReadyConditionReason, "%s", deployment.Name)
+		conditions.MarkFalse(&dockyardsCluster, ClusterComponentsReadyCondition, WaitingForClusterComponentReadyConditionReason, "%s", workload.Name)
 		clusterComponentsReady = false
 
 		break
@@ -201,13 +201,13 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{}, nil
 }
 
-func (r *DockyardsClusterReconciler) dockyardsDeploymentToDockyardsCluster(_ context.Context, obj client.Object) []ctrl.Request {
-	dockyardsDeployment, ok := obj.(*dockyardsv1.Deployment)
+func (r *DockyardsClusterReconciler) dockyardsWorkloadToDockyardsCluster(_ context.Context, obj client.Object) []ctrl.Request {
+	dockyardsWorkload, ok := obj.(*dockyardsv1.Workload)
 	if !ok {
 		return nil
 	}
 
-	clusterName, has := dockyardsDeployment.Labels[dockyardsv1.LabelClusterName]
+	clusterName, has := dockyardsWorkload.Labels[dockyardsv1.LabelClusterName]
 	if !has {
 		return nil
 	}
@@ -216,7 +216,7 @@ func (r *DockyardsClusterReconciler) dockyardsDeploymentToDockyardsCluster(_ con
 		{
 			NamespacedName: types.NamespacedName{
 				Name:      clusterName,
-				Namespace: dockyardsDeployment.Namespace,
+				Namespace: dockyardsWorkload.Namespace,
 			},
 		},
 	}
@@ -232,8 +232,8 @@ func (r *DockyardsClusterReconciler) SetupWithManager(m ctrl.Manager) error {
 		For(&dockyardsv1.Cluster{}).
 		Owns(&clusterv1.Cluster{}).
 		Watches(
-			&dockyardsv1.Deployment{},
-			handler.EnqueueRequestsFromMapFunc(r.dockyardsDeploymentToDockyardsCluster),
+			&dockyardsv1.Workload{},
+			handler.EnqueueRequestsFromMapFunc(r.dockyardsWorkloadToDockyardsCluster),
 		).
 		Complete(r)
 	if err != nil {
