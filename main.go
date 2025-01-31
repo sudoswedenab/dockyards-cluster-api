@@ -75,6 +75,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	err = (&controllers.DockyardsNodePoolReconciler{
+		Client: m.GetClient(),
+	}).SetupWithManager(m)
+	if err != nil {
+		slogr.Error(err, "error creating dockyards node pool reconciler")
+
+		os.Exit(1)
+	}
+
 	err = m.Start(ctx)
 	if err != nil {
 		slogr.Error(err, "error starting manager")
