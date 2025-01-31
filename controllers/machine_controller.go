@@ -18,11 +18,11 @@ import (
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;patch;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
-type ClusterAPIMachineReconciler struct {
+type MachineReconciler struct {
 	client.Client
 }
 
-func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reterr error) {
+func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reterr error) {
 	logger := ctrl.LoggerFrom(ctx)
 
 	var machine clusterv1.Machine
@@ -51,25 +51,25 @@ func (r *ClusterAPIMachineReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return ctrl.Result{}, nil
 }
 
-func (r *ClusterAPIMachineReconciler) reconcileDockyardsNode(ctx context.Context, machine *clusterv1.Machine) (ctrl.Result, error) {
+func (r *MachineReconciler) reconcileDockyardsNode(ctx context.Context, machine *clusterv1.Machine) (ctrl.Result, error) {
 	logger := ctrl.LoggerFrom(ctx)
 
 	var dockyardsNodePoolName string
 
 	if util.IsControlPlaneMachine(machine) {
-		var clusterAPICluster clusterv1.Cluster
-		err := r.Get(ctx, client.ObjectKey{Name: machine.Spec.ClusterName, Namespace: machine.Namespace}, &clusterAPICluster)
+		var cluster clusterv1.Cluster
+		err := r.Get(ctx, client.ObjectKey{Name: machine.Spec.ClusterName, Namespace: machine.Namespace}, &cluster)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
-		if clusterAPICluster.Spec.ControlPlaneRef == nil {
+		if cluster.Spec.ControlPlaneRef == nil {
 			logger.Info("ignoring machine with empty cluster control plane reference")
 
 			return ctrl.Result{}, nil
 		}
 
-		dockyardsNodePoolName = clusterAPICluster.Spec.ControlPlaneRef.Name
+		dockyardsNodePoolName = cluster.Spec.ControlPlaneRef.Name
 	}
 
 	machineDeploymentName, hasLabel := machine.Labels[clusterv1.MachineDeploymentNameLabel]
@@ -139,7 +139,7 @@ func (r *ClusterAPIMachineReconciler) reconcileDockyardsNode(ctx context.Context
 	return ctrl.Result{}, nil
 }
 
-func (r *ClusterAPIMachineReconciler) SetupWithManager(m ctrl.Manager) error {
+func (r *MachineReconciler) SetupWithManager(m ctrl.Manager) error {
 	scheme := m.GetScheme()
 
 	_ = clusterv1.AddToScheme(scheme)

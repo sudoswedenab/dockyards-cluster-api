@@ -57,11 +57,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = (&controllers.ClusterAPIMachineReconciler{
+	err = (&controllers.MachineReconciler{
 		Client: m.GetClient(),
 	}).SetupWithManager(m)
 	if err != nil {
-		slogr.Error(err, "error creating cluster-api machine reconciler")
+		slogr.Error(err, "error creating machine reconciler")
 
 		os.Exit(1)
 	}
