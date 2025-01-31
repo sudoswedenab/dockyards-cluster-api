@@ -14,3 +14,7 @@ const (
 	WaitingForClusterFallbackReason                   string = "WaitingForCluster"
 	WaitingForClusterControlPlaneFallbackReason       string = "WaitingForClusterControlPlane"
 )
+
+const (
+	MachineNameLabel string = "cluster-api.dockyards.io/machine-name"
+)
