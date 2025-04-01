@@ -9,6 +9,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -87,6 +88,36 @@ func (r *DockyardsNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, nil
 	}
 
+	result, err = r.reconcileConditions(&dockyardsNode, ownerMachine)
+	if err != nil {
+		return result, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *DockyardsNodeReconciler) reconcileConditions(dockyardsNode *dockyardsv1.Node, ownerMachine *clusterv1.Machine) (ctrl.Result, error) {
+	v1beta2Conditions := ownerMachine.GetV1Beta2Conditions()
+	if v1beta2Conditions != nil {
+		readyCondition := meta.FindStatusCondition(v1beta2Conditions, clusterv1.MachineReadyV1Beta2Condition)
+
+		if readyCondition != nil {
+			condition := metav1.Condition{
+				Type:               MachineReadyCondition,
+				Reason:             readyCondition.Reason,
+				Status:             readyCondition.Status,
+				Message:            readyCondition.Message,
+				LastTransitionTime: readyCondition.LastTransitionTime,
+			}
+
+			conditions.Set(dockyardsNode, &condition)
+		} else {
+			conditions.MarkFalse(dockyardsNode, MachineReadyCondition, WaitingForMachineReadyConditionReason, "")
+		}
+
+		return ctrl.Result{}, nil
+	}
+
 	readyCondition := capiconditions.Get(ownerMachine, clusterv1.ReadyCondition)
 	if readyCondition != nil {
 		condition := metav1.Condition{
@@ -97,9 +128,9 @@ func (r *DockyardsNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			Status:             metav1.ConditionStatus(readyCondition.Status),
 		}
 
-		conditions.Set(&dockyardsNode, &condition)
+		conditions.Set(dockyardsNode, &condition)
 	} else {
-		conditions.MarkFalse(&dockyardsNode, MachineReadyCondition, WaitingForMachineReadyConditionReason, "")
+		conditions.MarkFalse(dockyardsNode, MachineReadyCondition, WaitingForMachineReadyConditionReason, "")
 	}
 
 	machineNodeHealthyCondition := capiconditions.Get(ownerMachine, clusterv1.MachineNodeHealthyCondition)
@@ -112,9 +143,9 @@ func (r *DockyardsNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			Status:             metav1.ConditionStatus(machineNodeHealthyCondition.Status),
 		}
 
-		conditions.Set(&dockyardsNode, &condition)
+		conditions.Set(dockyardsNode, &condition)
 	} else {
-		conditions.MarkFalse(&dockyardsNode, string(clusterv1.MachineNodeHealthyCondition), WaitingForNodeHealthyConditionReason, "")
+		conditions.MarkFalse(dockyardsNode, string(clusterv1.MachineNodeHealthyCondition), WaitingForNodeHealthyConditionReason, "")
 	}
 
 	return ctrl.Result{}, nil
