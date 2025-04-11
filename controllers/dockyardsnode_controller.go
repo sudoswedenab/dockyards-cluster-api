@@ -115,6 +115,8 @@ func (r *DockyardsNodeReconciler) reconcileConditions(dockyardsNode *dockyardsv1
 			conditions.MarkFalse(dockyardsNode, MachineReadyCondition, WaitingForMachineReadyConditionReason, "")
 		}
 
+		conditions.Delete(dockyardsNode, string(clusterv1.MachineNodeHealthyCondition))
+
 		return ctrl.Result{}, nil
 	}
 

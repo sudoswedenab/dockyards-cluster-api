@@ -272,4 +272,135 @@ func TestDockyardsNodeController_Reconcile(t *testing.T) {
 			t.Errorf("diff: %s", cmp.Diff(expected, actual, opts))
 		}
 	})
+
+	t.Run("test waiting conditions", func(t *testing.T) {
+		owner := clusterv1.Machine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-waiting",
+				Namespace: namespace.Name,
+			},
+		}
+
+		err := c.Create(ctx, &owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		patch := client.MergeFrom(owner.DeepCopy())
+
+		owner.Status.V1Beta2 = &clusterv1.MachineV1Beta2Status{
+			Conditions: []metav1.Condition{
+				{
+					Message: "v1beta2 testing",
+					Reason:  clusterv1.MachineReadyV1Beta2Reason,
+					Status:  metav1.ConditionTrue,
+					Type:    clusterv1.MachineReadyV1Beta2Condition,
+				},
+			},
+		}
+
+		owner.Status.Conditions = clusterv1.Conditions{
+			{
+				Message: "v1beta1 testing",
+				Type:    clusterv1.ReadyCondition,
+				Reason:  "test",
+				Status:  corev1.ConditionTrue,
+			},
+		}
+
+		err = c.Status().Patch(ctx, &owner, patch)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		node := dockyardsv1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Finalizers: []string{
+					DockyardsNodeFinalizer,
+				},
+				Name:      "test-waiting",
+				Namespace: namespace.Name,
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: clusterv1.GroupVersion.String(),
+						Kind:       "Machine",
+						Name:       owner.Name,
+						UID:        owner.UID,
+					},
+				},
+			},
+		}
+
+		err = c.Create(ctx, &node)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		patch = client.MergeFrom(node.DeepCopy())
+
+		node.Status.Conditions = []metav1.Condition{
+			{
+				Type:   dockyardsv1.ReadyCondition,
+				Status: metav1.ConditionFalse,
+				Reason: WaitingForMachineReadyConditionReason,
+			},
+			{
+				Type:   MachineReadyCondition,
+				Status: metav1.ConditionFalse,
+				Reason: WaitingForMachineReadyConditionReason,
+			},
+			{
+				Type:   string(clusterv1.MachineNodeHealthyCondition),
+				Status: metav1.ConditionFalse,
+				Reason: WaitingForNodeHealthyConditionReason,
+			},
+		}
+
+		err = c.Status().Patch(ctx, &node, patch)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      node.Name,
+				Namespace: node.Namespace,
+			},
+		}
+
+		_, err = r.Reconcile(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var actual dockyardsv1.Node
+		err = c.Get(ctx, client.ObjectKeyFromObject(&node), &actual)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expected := dockyardsv1.Node{
+			ObjectMeta: actual.ObjectMeta,
+			Status: dockyardsv1.NodeStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:    dockyardsv1.ReadyCondition,
+						Status:  metav1.ConditionTrue,
+						Reason:  clusterv1.ReadyV1Beta2Reason,
+						Message: "v1beta2 testing",
+					},
+					{
+						Type:    MachineReadyCondition,
+						Status:  metav1.ConditionTrue,
+						Reason:  clusterv1.ReadyV1Beta2Reason,
+						Message: "v1beta2 testing",
+					},
+				},
+			},
+		}
+
+		if !cmp.Equal(actual, expected, opts) {
+			t.Errorf("diff: %s", cmp.Diff(expected, actual, opts))
+		}
+	})
 }
