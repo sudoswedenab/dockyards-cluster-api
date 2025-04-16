@@ -125,78 +125,9 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	dockyardsCluster.Status.Version = clusterVersion.Original()
 
 	return ctrl.Result{}, nil
-
 }
 
 func (r *DockyardsClusterReconciler) reconcileConditions(ctx context.Context, dockyardsCluster *dockyardsv1.Cluster, cluster *clusterv1.Cluster) (ctrl.Result, error) {
-	if cluster.Status.V1Beta2 != nil {
-		availableCondition := meta.FindStatusCondition(cluster.Status.V1Beta2.Conditions, clusterv1.AvailableV1Beta2Condition)
-		if availableCondition != nil {
-			condition := metav1.Condition{
-				Type:               ClusterAvailableCondition,
-				Status:             availableCondition.Status,
-				Reason:             availableCondition.Reason,
-				Message:            availableCondition.Message,
-				LastTransitionTime: availableCondition.LastTransitionTime,
-			}
-
-			conditions.Set(dockyardsCluster, &condition)
-		} else {
-			conditions.MarkFalse(dockyardsCluster, ClusterAvailableCondition, WaitingForClusterAvailableConditionReason, "")
-		}
-
-		conditions.Delete(dockyardsCluster, ClusterReadyCondition)
-		conditions.Delete(dockyardsCluster, ClusterControlPlaneReadyCondition)
-	} else {
-		clusterReadyCondition := capiconditions.Get(cluster, clusterv1.ReadyCondition)
-		if clusterReadyCondition != nil {
-			condition := metav1.Condition{
-				Type:               ClusterReadyCondition,
-				Status:             metav1.ConditionStatus(clusterReadyCondition.Status),
-				Reason:             clusterReadyCondition.Reason,
-				Message:            clusterReadyCondition.Message,
-				LastTransitionTime: clusterReadyCondition.LastTransitionTime,
-			}
-
-			if InvalidReasonCharacters.FindString(condition.Reason) != "" {
-				condition.Message = condition.Reason
-				condition.Reason = WaitingForClusterFallbackReason
-			}
-
-			if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
-				condition.Reason = dockyardsv1.ReadyReason
-			}
-
-			conditions.Set(dockyardsCluster, &condition)
-		} else {
-			conditions.MarkFalse(dockyardsCluster, ClusterReadyCondition, WaitingForClusterReadyConditionReason, "")
-		}
-
-		controlPlaneReadyCondition := capiconditions.Get(cluster, clusterv1.ControlPlaneReadyCondition)
-		if controlPlaneReadyCondition != nil {
-			condition := metav1.Condition{
-				Type:               ClusterControlPlaneReadyCondition,
-				Status:             metav1.ConditionStatus(controlPlaneReadyCondition.Status),
-				Reason:             controlPlaneReadyCondition.Reason,
-				Message:            controlPlaneReadyCondition.Message,
-				LastTransitionTime: controlPlaneReadyCondition.LastTransitionTime,
-			}
-
-			if InvalidReasonCharacters.FindString(condition.Reason) != "" {
-				condition.Message = condition.Reason
-				condition.Reason = WaitingForClusterControlPlaneFallbackReason
-			}
-
-			if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
-				condition.Reason = dockyardsv1.ReadyReason
-			}
-
-			conditions.Set(dockyardsCluster, &condition)
-		} else {
-			conditions.MarkFalse(dockyardsCluster, ClusterControlPlaneReadyCondition, WaitingForClusterControlPlaneReadyConditionReason, "")
-		}
-	}
-
 	matchingLabels := client.MatchingLabels{
 		dockyardsv1.LabelClusterName: dockyardsCluster.Name,
 	}
@@ -225,6 +156,76 @@ func (r *DockyardsClusterReconciler) reconcileConditions(ctx context.Context, do
 
 	if clusterComponentsReady {
 		conditions.MarkTrue(dockyardsCluster, ClusterComponentsReadyCondition, dockyardsv1.ReadyReason, "")
+	}
+
+	if cluster.Status.V1Beta2 != nil {
+		availableCondition := meta.FindStatusCondition(cluster.Status.V1Beta2.Conditions, clusterv1.AvailableV1Beta2Condition)
+		if availableCondition != nil {
+			condition := metav1.Condition{
+				Type:               ClusterAvailableCondition,
+				Status:             availableCondition.Status,
+				Reason:             availableCondition.Reason,
+				Message:            availableCondition.Message,
+				LastTransitionTime: availableCondition.LastTransitionTime,
+			}
+
+			conditions.Set(dockyardsCluster, &condition)
+		} else {
+			conditions.MarkFalse(dockyardsCluster, ClusterAvailableCondition, WaitingForClusterAvailableConditionReason, "")
+		}
+
+		conditions.Delete(dockyardsCluster, ClusterReadyCondition)
+		conditions.Delete(dockyardsCluster, ClusterControlPlaneReadyCondition)
+
+		return ctrl.Result{}, nil
+	}
+
+	clusterReadyCondition := capiconditions.Get(cluster, clusterv1.ReadyCondition)
+	if clusterReadyCondition != nil {
+		condition := metav1.Condition{
+			Type:               ClusterReadyCondition,
+			Status:             metav1.ConditionStatus(clusterReadyCondition.Status),
+			Reason:             clusterReadyCondition.Reason,
+			Message:            clusterReadyCondition.Message,
+			LastTransitionTime: clusterReadyCondition.LastTransitionTime,
+		}
+
+		if InvalidReasonCharacters.FindString(condition.Reason) != "" {
+			condition.Message = condition.Reason
+			condition.Reason = WaitingForClusterFallbackReason
+		}
+
+		if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
+			condition.Reason = dockyardsv1.ReadyReason
+		}
+
+		conditions.Set(dockyardsCluster, &condition)
+	} else {
+		conditions.MarkFalse(dockyardsCluster, ClusterReadyCondition, WaitingForClusterReadyConditionReason, "")
+	}
+
+	controlPlaneReadyCondition := capiconditions.Get(cluster, clusterv1.ControlPlaneReadyCondition)
+	if controlPlaneReadyCondition != nil {
+		condition := metav1.Condition{
+			Type:               ClusterControlPlaneReadyCondition,
+			Status:             metav1.ConditionStatus(controlPlaneReadyCondition.Status),
+			Reason:             controlPlaneReadyCondition.Reason,
+			Message:            controlPlaneReadyCondition.Message,
+			LastTransitionTime: controlPlaneReadyCondition.LastTransitionTime,
+		}
+
+		if InvalidReasonCharacters.FindString(condition.Reason) != "" {
+			condition.Message = condition.Reason
+			condition.Reason = WaitingForClusterControlPlaneFallbackReason
+		}
+
+		if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
+			condition.Reason = dockyardsv1.ReadyReason
+		}
+
+		conditions.Set(dockyardsCluster, &condition)
+	} else {
+		conditions.MarkFalse(dockyardsCluster, ClusterControlPlaneReadyCondition, WaitingForClusterControlPlaneReadyConditionReason, "")
 	}
 
 	return ctrl.Result{}, nil
