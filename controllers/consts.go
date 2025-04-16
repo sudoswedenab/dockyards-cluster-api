@@ -18,3 +18,9 @@ const (
 const (
 	MachineNameLabel string = "cluster-api.dockyards.io/machine-name"
 )
+
+const (
+	ClusterAvailableCondition string = "ClusterAvailable"
+
+	WaitingForClusterAvailableConditionReason string = "WaitingForClusterAvailableCondition"
+)
