@@ -28,6 +28,13 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
+	t.Cleanup(func() {
+		cancel()
+		env.Stop()
+	})
+
 	scheme := runtime.NewScheme()
 
 	_ = clusterv1.AddToScheme(scheme)
@@ -38,8 +45,6 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	ctx := context.Background()
 
 	namespace := corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
