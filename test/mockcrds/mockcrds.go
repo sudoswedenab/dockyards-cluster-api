@@ -10,11 +10,17 @@ import (
 
 var (
 	DockyardsNode     = mockCRD(dockyardsv1.NodeKind, "nodes", dockyardsv1.GroupVersion.Group, dockyardsv1.GroupVersion.Version)
+	DockyardsCluster  = mockCRD(dockyardsv1.ClusterKind, "clusters", dockyardsv1.GroupVersion.Group, dockyardsv1.GroupVersion.Version)
+	DockyardsWorkload = mockCRD(dockyardsv1.WorkloadKind, "workloads", dockyardsv1.GroupVersion.Group, dockyardsv1.GroupVersion.Version)
 	ClusterAPIMachine = mockCRD("Machine", "machines", clusterv1.GroupVersion.Group, clusterv1.GroupVersion.Version)
+	ClusterAPICluster = mockCRD("Cluster", "clusters", clusterv1.GroupVersion.Group, clusterv1.GroupVersion.Version)
 
 	CRDs = []*apiextensionsv1.CustomResourceDefinition{
 		DockyardsNode,
+		DockyardsCluster,
+		DockyardsWorkload,
 		ClusterAPIMachine,
+		ClusterAPICluster,
 	}
 )
 
