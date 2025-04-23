@@ -115,7 +115,7 @@ func (r *MachineReconciler) reconcileDockyardsNode(ctx context.Context, machine 
 		dockyardsNode.Labels[MachineNameLabel] = machine.Name
 
 		if machine.Spec.ProviderID != nil {
-			dockyardsNode.Status.CloudServiceID = *machine.Spec.ProviderID
+			dockyardsNode.Spec.ProviderID = machine.Spec.ProviderID
 		}
 
 		if machine.Status.NodeInfo != nil {

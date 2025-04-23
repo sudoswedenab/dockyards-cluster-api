@@ -3,7 +3,7 @@ module bitbucket.org/sudosweden/dockyards-cluster-api
 go 1.23.1
 
 require (
-	bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20250127092947-f86b4c23f261
+	bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20250423111748-6e078d49c860
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/fluxcd/pkg/runtime v0.46.0
 	github.com/go-logr/logr v1.4.2
