@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.3
 
 require (
-	bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20250423111748-6e078d49c860
+	bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20250522173522-e0b99a2aa1d5
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/fluxcd/pkg/runtime v0.46.0
 	github.com/go-logr/logr v1.4.2

@@ -66,6 +66,15 @@ rules:
 - apiGroups:
   - dockyards.io
   resources:
+  - workloadinventories
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - dockyards.io
+  resources:
   - workloads
   verbs:
   - get

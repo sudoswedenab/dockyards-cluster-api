@@ -1,5 +1,5 @@
-bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20250423111748-6e078d49c860 h1:UvDyUkDbGic+Mb6FNb2As9K+MtXQTL6fmrSzwuX8bQc=
-bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20250423111748-6e078d49c860/go.mod h1:ewkKEkiqkXxqZsOSNitvHOvK86uJ/Dfqif8aKI5q2UI=
+bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20250522173522-e0b99a2aa1d5 h1:uH/vEaSf2Ji+ah2i+jLqOhc1O4jVeStvneS/xAYKKMo=
+bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20250522173522-e0b99a2aa1d5/go.mod h1:ewkKEkiqkXxqZsOSNitvHOvK86uJ/Dfqif8aKI5q2UI=
 cel.dev/expr v0.19.1 h1:NciYrtDRIR0lNCnH1LFJegdjspNx9fI59O7TWcua/W4=
 cel.dev/expr v0.19.1/go.mod h1:MrpN08Q+lEBs+bGYdLxxHkZoUSsCp0nSKTs0nTymJgw=
 dario.cat/mergo v1.0.1 h1:Ra4+bf83h2ztPIQYNP99R6m+Y7KfnARDfID+a+vLl4s=
