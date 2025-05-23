@@ -67,6 +67,11 @@ func main() {
 			Reader: mgr.GetCache(),
 		},
 	})
+	if err != nil {
+		slogr.Error(err, "error creating secret client")
+
+		os.Exit(1)
+	}
 
 	clusterCache, err := clustercache.SetupWithManager(ctx, mgr, clustercache.Options{
 		SecretClient: secretClient,
