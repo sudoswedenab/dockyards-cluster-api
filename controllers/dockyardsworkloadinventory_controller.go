@@ -41,7 +41,6 @@ func (r *DockyardsWorkloadInventoryReconciler) Reconcile(ctx context.Context, re
 
 	if !workloadInventory.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
-
 	}
 
 	dockyardsCluster, hasLabel := workloadInventory.Labels[dockyardsv1.LabelClusterName]
