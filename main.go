@@ -22,6 +22,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
+
 func main() {
 	var metricsBindAddress string
 	pflag.StringVar(&metricsBindAddress, "metrics-bind-address", "0", "metrics bind address")
