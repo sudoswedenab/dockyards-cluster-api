@@ -21,7 +21,7 @@ import (
 	"os/signal"
 
 	"github.com/sudoswedenab/dockyards-backend/api/v1alpha3/index"
-	"bitbucket.org/sudosweden/dockyards-cluster-api/controllers"
+	"github.com/sudoswedenab/dockyards-cluster-api/controllers"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"

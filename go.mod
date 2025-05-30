@@ -1,4 +1,4 @@
-module bitbucket.org/sudosweden/dockyards-cluster-api
+module github.com/sudoswedenab/dockyards-cluster-api
 
 go 1.24.0
 

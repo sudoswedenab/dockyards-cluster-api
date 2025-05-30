@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
-	"bitbucket.org/sudosweden/dockyards-cluster-api/test/mockcrds"
+	"github.com/sudoswedenab/dockyards-cluster-api/test/mockcrds"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
