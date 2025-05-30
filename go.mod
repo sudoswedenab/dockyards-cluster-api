@@ -22,6 +22,7 @@ require (
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
+	github.com/bmatcuk/doublestar/v4 v4.0.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
@@ -35,6 +36,7 @@ require (
 	github.com/go-openapi/swag v0.23.1 // indirect
 	github.com/gobuffalo/flect v1.0.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/google/addlicense v1.1.1 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -84,4 +86,7 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-tool sigs.k8s.io/controller-tools/cmd/controller-gen
+tool (
+	github.com/google/addlicense
+	sigs.k8s.io/controller-tools/cmd/controller-gen
+)
