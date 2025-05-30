@@ -32,7 +32,7 @@ linters:
           alias: corev1
         - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
           alias: metav1
-        - pkg: bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha3
+        - pkg: github.com/sudoswedenab/dockyards-backend/api/v1alpha3
           alias: dockyardsv1
       no-unaliased: true
   exclusions:

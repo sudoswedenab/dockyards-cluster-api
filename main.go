@@ -20,7 +20,7 @@ import (
 	"os"
 	"os/signal"
 
-	"bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha3/index"
+	"github.com/sudoswedenab/dockyards-backend/api/v1alpha3/index"
 	"bitbucket.org/sudosweden/dockyards-cluster-api/controllers"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"

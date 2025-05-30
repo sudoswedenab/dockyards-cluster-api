@@ -19,8 +19,8 @@ import (
 	"errors"
 	"net/url"
 
-	dockyardsv1 "bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha3"
-	"bitbucket.org/sudosweden/dockyards-backend/pkg/api/v1alpha3/index"
+	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
+	"github.com/sudoswedenab/dockyards-backend/api/v1alpha3/index"
 	"github.com/fluxcd/pkg/runtime/patch"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

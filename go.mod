@@ -5,12 +5,12 @@ go 1.24.0
 toolchain go1.24.3
 
 require (
-	bitbucket.org/sudosweden/dockyards-backend/pkg/api v0.0.0-20250522173522-e0b99a2aa1d5
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/fluxcd/pkg/runtime v0.46.0
 	github.com/go-logr/logr v1.4.2
 	github.com/google/go-cmp v0.7.0
 	github.com/spf13/pflag v1.0.6
+	github.com/sudoswedenab/dockyards-backend/api v0.0.0-20250530144101-703eb6266181
 	k8s.io/api v0.33.1
 	k8s.io/apiextensions-apiserver v0.33.1
 	k8s.io/apimachinery v0.33.1
