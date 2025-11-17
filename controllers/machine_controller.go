@@ -18,6 +18,7 @@ import (
 	"context"
 
 	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
+	"github.com/sudoswedenab/dockyards-backend/api/apiutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
@@ -110,6 +111,17 @@ func (r *MachineReconciler) reconcileDockyardsNode(ctx context.Context, machine 
 		},
 	}
 
+	var dockyardsCluster dockyardsv1.Cluster
+	err = r.Get(ctx, client.ObjectKey{Name: machine.Spec.ClusterName, Namespace: machine.Namespace}, &dockyardsCluster)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	organization, err := apiutil.GetOwnerOrganization(ctx, r.Client, &dockyardsCluster)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	operationResult, err := controllerutil.CreateOrPatch(ctx, r.Client, &dockyardsNode, func() error {
 		dockyardsNode.OwnerReferences = []metav1.OwnerReference{
 			{
@@ -124,8 +136,10 @@ func (r *MachineReconciler) reconcileDockyardsNode(ctx context.Context, machine 
 			dockyardsNode.Labels = make(map[string]string)
 		}
 
+		dockyardsNode.Labels[dockyardsv1.LabelOrganizationName] = organization.Name
+		dockyardsNode.Labels[dockyardsv1.LabelClusterName] = dockyardsCluster.Name
 		dockyardsNode.Labels[dockyardsv1.LabelNodePoolName] = dockyardsNodePool.Name
-		dockyardsNode.Labels[dockyardsv1.LabelClusterName] = machine.Spec.ClusterName
+		dockyardsNode.Labels[dockyardsv1.LabelNodeName] = machine.Name
 		dockyardsNode.Labels[MachineNameLabel] = machine.Name
 
 		if machine.Spec.ProviderID != nil {
