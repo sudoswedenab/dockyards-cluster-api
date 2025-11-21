@@ -35,7 +35,6 @@ rules:
   verbs:
   - get
   - list
-  - patch
   - watch
 - apiGroups:
   - ""
@@ -85,6 +84,14 @@ rules:
   - nodes/status
   verbs:
   - patch
+- apiGroups:
+  - dockyards.io
+  resources:
+  - organizations
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - dockyards.io
   resources:
