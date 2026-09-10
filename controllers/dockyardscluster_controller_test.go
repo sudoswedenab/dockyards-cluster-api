@@ -79,6 +79,46 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 		cmpopts.IgnoreFields(metav1.Condition{}, "ObservedGeneration", "LastTransitionTime"),
 	}
 
+	t.Run("test creates cluster with non-empty spec", func(t *testing.T) {
+		dockyardsCluster := dockyardsv1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "test-",
+				Namespace:    namespace.Name,
+			},
+		}
+
+		err := c.Create(ctx, &dockyardsCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      dockyardsCluster.Name,
+				Namespace: dockyardsCluster.Namespace,
+			},
+		}
+
+		_, err = r.Reconcile(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var cluster clusterv1.Cluster
+		err = c.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &cluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if cluster.Spec.Paused == nil {
+			t.Fatalf("expected cluster spec.paused to be set")
+		}
+
+		if *cluster.Spec.Paused {
+			t.Fatalf("expected cluster spec.paused to be false")
+		}
+	})
+
 	t.Run("test v1beta2 conditions", func(t *testing.T) {
 		dockyardsCluster := dockyardsv1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{
