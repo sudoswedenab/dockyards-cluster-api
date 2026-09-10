@@ -106,14 +106,12 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 		patch := client.MergeFrom(cluster.DeepCopy())
 
-		cluster.Status.V1Beta2 = &clusterv1.ClusterV1Beta2Status{
-			Conditions: []metav1.Condition{
-				{
-					Type:    clusterv1.AvailableV1Beta2Condition,
-					Status:  metav1.ConditionTrue,
-					Reason:  clusterv1.AvailableV1Beta2Reason,
-					Message: "",
-				},
+		cluster.Status.Conditions = []metav1.Condition{
+			{
+				Type:    clusterv1.ClusterAvailableCondition,
+				Status:  metav1.ConditionTrue,
+				Reason:  clusterv1.ClusterAvailableReason,
+				Message: "",
 			},
 		}
 
@@ -152,7 +150,7 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 					{
 						Type:   ClusterAvailableCondition,
 						Status: metav1.ConditionTrue,
-						Reason: clusterv1.AvailableV1Beta2Reason,
+						Reason: clusterv1.ClusterAvailableReason,
 					},
 					{
 						Type:   ClusterComponentsReadyCondition,
@@ -196,12 +194,12 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 		patch := client.MergeFrom(cluster.DeepCopy())
 
-		cluster.Status.Conditions = clusterv1.Conditions{
+		cluster.SetV1Beta1Conditions(clusterv1.Conditions{
 			{
-				Type:   clusterv1.ReadyCondition,
+				Type:   clusterv1.ReadyV1Beta1Condition,
 				Status: corev1.ConditionTrue,
 			},
-		}
+		})
 
 		err = c.Status().Patch(ctx, &cluster, patch)
 		if err != nil {
@@ -307,14 +305,12 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 		patch = client.MergeFrom(cluster.DeepCopy())
 
-		cluster.Status.V1Beta2 = &clusterv1.ClusterV1Beta2Status{
-			Conditions: []metav1.Condition{
-				{
-					Type:    clusterv1.AvailableV1Beta2Condition,
-					Status:  metav1.ConditionFalse,
-					Reason:  clusterv1.ClusterAvailableInternalErrorV1Beta2Reason,
-					Message: "",
-				},
+		cluster.Status.Conditions = []metav1.Condition{
+			{
+				Type:    clusterv1.ClusterAvailableCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  clusterv1.ClusterAvailableInternalErrorReason,
+				Message: "",
 			},
 		}
 
@@ -348,12 +344,12 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 					{
 						Type:   dockyardsv1.ReadyCondition,
 						Status: metav1.ConditionFalse,
-						Reason: clusterv1.InternalErrorV1Beta2Reason,
+						Reason: clusterv1.InternalErrorReason,
 					},
 					{
 						Type:   ClusterAvailableCondition,
 						Status: metav1.ConditionFalse,
-						Reason: clusterv1.InternalErrorV1Beta2Reason,
+						Reason: clusterv1.InternalErrorReason,
 					},
 					{
 						Type:   ClusterComponentsReadyCondition,

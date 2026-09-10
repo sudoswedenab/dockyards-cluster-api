@@ -28,6 +28,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
+	capiv1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -120,11 +121,11 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	clusterVersion := semverv3.New(3, 2, 1, "", "")
 	for _, clusterAPIMachine := range machineList.Items {
-		if clusterAPIMachine.Spec.Version == nil {
+		if clusterAPIMachine.Spec.Version == "" {
 			continue
 		}
 
-		machineVersion, err := semverv3.NewVersion(*clusterAPIMachine.Spec.Version)
+		machineVersion, err := semverv3.NewVersion(clusterAPIMachine.Spec.Version)
 		if err != nil {
 			continue
 		}
@@ -170,24 +171,74 @@ func (r *DockyardsClusterReconciler) reconcileConditions(ctx context.Context, do
 		conditions.MarkTrue(dockyardsCluster, ClusterComponentsReadyCondition, dockyardsv1.ReadyReason, "")
 	}
 
-	if cluster.Status.V1Beta2 != nil {
-		availableCondition := meta.FindStatusCondition(cluster.Status.V1Beta2.Conditions, clusterv1.AvailableV1Beta2Condition)
-		if availableCondition != nil {
+	availableCondition := meta.FindStatusCondition(cluster.Status.Conditions, clusterv1.ClusterAvailableCondition)
+	if availableCondition != nil {
+		condition := metav1.Condition{
+			Type:               ClusterAvailableCondition,
+			Status:             availableCondition.Status,
+			Reason:             availableCondition.Reason,
+			Message:            availableCondition.Message,
+			LastTransitionTime: availableCondition.LastTransitionTime,
+		}
+
+		conditions.Set(dockyardsCluster, &condition)
+
+		conditions.Delete(dockyardsCluster, ClusterReadyCondition)
+		conditions.Delete(dockyardsCluster, ClusterControlPlaneReadyCondition)
+
+		return ctrl.Result{}, nil
+	}
+
+	legacyClusterReadyCondition := capiv1beta1conditions.Get(cluster, clusterv1.ReadyV1Beta1Condition)
+	legacyControlPlaneReadyCondition := capiv1beta1conditions.Get(cluster, clusterv1.ControlPlaneReadyV1Beta1Condition)
+	if legacyClusterReadyCondition != nil || legacyControlPlaneReadyCondition != nil {
+		conditions.Delete(dockyardsCluster, ClusterAvailableCondition)
+
+		if legacyClusterReadyCondition != nil {
 			condition := metav1.Condition{
-				Type:               ClusterAvailableCondition,
-				Status:             availableCondition.Status,
-				Reason:             availableCondition.Reason,
-				Message:            availableCondition.Message,
-				LastTransitionTime: availableCondition.LastTransitionTime,
+				Type:               ClusterReadyCondition,
+				Status:             metav1.ConditionStatus(legacyClusterReadyCondition.Status),
+				Reason:             legacyClusterReadyCondition.Reason,
+				Message:            legacyClusterReadyCondition.Message,
+				LastTransitionTime: legacyClusterReadyCondition.LastTransitionTime,
+			}
+
+			if InvalidReasonCharacters.FindString(condition.Reason) != "" {
+				condition.Message = condition.Reason
+				condition.Reason = WaitingForClusterFallbackReason
+			}
+
+			if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
+				condition.Reason = dockyardsv1.ReadyReason
 			}
 
 			conditions.Set(dockyardsCluster, &condition)
 		} else {
-			conditions.MarkFalse(dockyardsCluster, ClusterAvailableCondition, WaitingForClusterAvailableConditionReason, "")
+			conditions.MarkFalse(dockyardsCluster, ClusterReadyCondition, WaitingForClusterReadyConditionReason, "")
 		}
 
-		conditions.Delete(dockyardsCluster, ClusterReadyCondition)
-		conditions.Delete(dockyardsCluster, ClusterControlPlaneReadyCondition)
+		if legacyControlPlaneReadyCondition != nil {
+			condition := metav1.Condition{
+				Type:               ClusterControlPlaneReadyCondition,
+				Status:             metav1.ConditionStatus(legacyControlPlaneReadyCondition.Status),
+				Reason:             legacyControlPlaneReadyCondition.Reason,
+				Message:            legacyControlPlaneReadyCondition.Message,
+				LastTransitionTime: legacyControlPlaneReadyCondition.LastTransitionTime,
+			}
+
+			if InvalidReasonCharacters.FindString(condition.Reason) != "" {
+				condition.Message = condition.Reason
+				condition.Reason = WaitingForClusterControlPlaneFallbackReason
+			}
+
+			if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
+				condition.Reason = dockyardsv1.ReadyReason
+			}
+
+			conditions.Set(dockyardsCluster, &condition)
+		} else {
+			conditions.MarkFalse(dockyardsCluster, ClusterControlPlaneReadyCondition, WaitingForClusterControlPlaneReadyConditionReason, "")
+		}
 
 		return ctrl.Result{}, nil
 	}
@@ -216,7 +267,7 @@ func (r *DockyardsClusterReconciler) reconcileConditions(ctx context.Context, do
 		conditions.MarkFalse(dockyardsCluster, ClusterReadyCondition, WaitingForClusterReadyConditionReason, "")
 	}
 
-	controlPlaneReadyCondition := capiconditions.Get(cluster, clusterv1.ControlPlaneReadyCondition)
+	controlPlaneReadyCondition := capiconditions.Get(cluster, clusterv1.ClusterControlPlaneAvailableCondition)
 	if controlPlaneReadyCondition != nil {
 		condition := metav1.Condition{
 			Type:               ClusterControlPlaneReadyCondition,
