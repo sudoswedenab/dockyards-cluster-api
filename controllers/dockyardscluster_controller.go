@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/utils/ptr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
 	capiv1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
@@ -82,6 +83,10 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	operationResult, err := controllerutil.CreateOrPatch(ctx, r.Client, &cluster, func() error {
 		controller := true
+
+		if cluster.Spec.Paused == nil {
+			cluster.Spec.Paused = ptr.To(false)
+		}
 
 		cluster.OwnerReferences = []metav1.OwnerReference{
 			{
