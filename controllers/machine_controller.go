@@ -80,7 +80,7 @@ func (r *MachineReconciler) reconcileDockyardsNode(ctx context.Context, machine 
 			return ctrl.Result{}, err
 		}
 
-		if cluster.Spec.ControlPlaneRef == nil {
+		if !cluster.Spec.ControlPlaneRef.IsDefined() {
 			logger.Info("ignoring machine with empty cluster control plane reference")
 
 			return ctrl.Result{}, nil
@@ -144,8 +144,8 @@ func (r *MachineReconciler) reconcileDockyardsNode(ctx context.Context, machine 
 		dockyardsNode.Labels[dockyardsv1.LabelNodeName] = machine.Name
 		dockyardsNode.Labels[MachineNameLabel] = machine.Name
 
-		if machine.Spec.ProviderID != nil {
-			dockyardsNode.Spec.ProviderID = machine.Spec.ProviderID
+		if machine.Spec.ProviderID != "" {
+			dockyardsNode.Spec.ProviderID = &machine.Spec.ProviderID
 		}
 
 		if machine.Status.NodeInfo != nil {

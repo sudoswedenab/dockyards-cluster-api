@@ -94,23 +94,12 @@ func TestDockyardsNodeController_Reconcile(t *testing.T) {
 
 		patch := client.MergeFrom(owner.DeepCopy())
 
-		owner.Status.V1Beta2 = &clusterv1.MachineV1Beta2Status{
-			Conditions: []metav1.Condition{
-				{
-					Message: "v1beta2 testing",
-					Reason:  clusterv1.MachineNotReadyV1Beta2Reason,
-					Status:  metav1.ConditionFalse,
-					Type:    clusterv1.MachineReadyV1Beta2Condition,
-				},
-			},
-		}
-
-		owner.Status.Conditions = clusterv1.Conditions{
+		owner.Status.Conditions = []metav1.Condition{
 			{
-				Message: "v1beta1 testing",
-				Type:    clusterv1.ReadyCondition,
-				Reason:  "test",
-				Status:  corev1.ConditionTrue,
+				Message: "v1beta2 testing",
+				Reason:  clusterv1.MachineNotReadyReason,
+				Status:  metav1.ConditionFalse,
+				Type:    clusterv1.MachineReadyCondition,
 			},
 		}
 
@@ -167,13 +156,13 @@ func TestDockyardsNodeController_Reconcile(t *testing.T) {
 					{
 						Type:    dockyardsv1.ReadyCondition,
 						Status:  metav1.ConditionFalse,
-						Reason:  clusterv1.MachineNotReadyV1Beta2Reason,
+						Reason:  clusterv1.MachineNotReadyReason,
 						Message: "v1beta2 testing",
 					},
 					{
 						Type:    MachineReadyCondition,
 						Status:  metav1.ConditionFalse,
-						Reason:  clusterv1.MachineNotReadyV1Beta2Reason,
+						Reason:  clusterv1.MachineNotReadyReason,
 						Message: "v1beta2 testing",
 					},
 				},
@@ -200,20 +189,20 @@ func TestDockyardsNodeController_Reconcile(t *testing.T) {
 
 		patch := client.MergeFrom(owner.DeepCopy())
 
-		owner.Status.Conditions = clusterv1.Conditions{
+		owner.SetV1Beta1Conditions(clusterv1.Conditions{
 			{
-				Type:    clusterv1.ReadyCondition,
+				Type:    clusterv1.ReadyV1Beta1Condition,
 				Status:  corev1.ConditionTrue,
 				Reason:  "TestReady",
 				Message: "testing ready",
 			},
 			{
-				Type:    clusterv1.MachineNodeHealthyCondition,
+				Type:    clusterv1.MachineNodeHealthyV1Beta1Condition,
 				Status:  corev1.ConditionUnknown,
 				Reason:  "TestNodeHealthy",
 				Message: "testing node healthy",
 			},
-		}
+		})
 
 		err = c.Status().Patch(ctx, &owner, patch)
 		if err != nil {
@@ -307,23 +296,12 @@ func TestDockyardsNodeController_Reconcile(t *testing.T) {
 
 		patch := client.MergeFrom(owner.DeepCopy())
 
-		owner.Status.V1Beta2 = &clusterv1.MachineV1Beta2Status{
-			Conditions: []metav1.Condition{
-				{
-					Message: "v1beta2 testing",
-					Reason:  clusterv1.MachineReadyV1Beta2Reason,
-					Status:  metav1.ConditionTrue,
-					Type:    clusterv1.MachineReadyV1Beta2Condition,
-				},
-			},
-		}
-
-		owner.Status.Conditions = clusterv1.Conditions{
+		owner.Status.Conditions = []metav1.Condition{
 			{
-				Message: "v1beta1 testing",
-				Type:    clusterv1.ReadyCondition,
-				Reason:  "test",
-				Status:  corev1.ConditionTrue,
+				Message: "v1beta2 testing",
+				Reason:  clusterv1.MachineReadyReason,
+				Status:  metav1.ConditionTrue,
+				Type:    clusterv1.MachineReadyCondition,
 			},
 		}
 
@@ -405,13 +383,13 @@ func TestDockyardsNodeController_Reconcile(t *testing.T) {
 					{
 						Type:    dockyardsv1.ReadyCondition,
 						Status:  metav1.ConditionTrue,
-						Reason:  clusterv1.ReadyV1Beta2Reason,
+						Reason:  clusterv1.MachineReadyReason,
 						Message: "v1beta2 testing",
 					},
 					{
 						Type:    MachineReadyCondition,
 						Status:  metav1.ConditionTrue,
-						Reason:  clusterv1.ReadyV1Beta2Reason,
+						Reason:  clusterv1.MachineReadyReason,
 						Message: "v1beta2 testing",
 					},
 				},
