@@ -18,15 +18,15 @@ import (
 	"context"
 	"regexp"
 
-	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
 	semverv3 "github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
+	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,9 +40,7 @@ import (
 // +kubebuilder:rbac:groups=dockyards.io,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dockyards.io,resources=workloads,verbs=get;list;watch
 
-var (
-	InvalidReasonCharacters = regexp.MustCompile("[^A-Za-z0-9_,:]")
-)
+var InvalidReasonCharacters = regexp.MustCompile("[^A-Za-z0-9_,:]")
 
 type DockyardsClusterReconciler struct {
 	client.Client
