@@ -21,12 +21,13 @@ import (
 	semverv3 "github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
+	controlplanev1 "github.com/siderolabs/cluster-api-control-plane-provider-talos/api/v1alpha3"
 	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/utils/ptr"
+	providerv1 "sigs.k8s.io/cluster-api-provider-kubevirt/api/v1alpha1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
 	capiv1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
@@ -38,11 +39,18 @@ import (
 
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=create;get;list;patch;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=taloscontrolplanes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dockyards.io,resources=clusters/status,verbs=patch
 // +kubebuilder:rbac:groups=dockyards.io,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dockyards.io,resources=workloads,verbs=get;list;watch
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kubevirtclusters,verbs=get;list;watch
 
 var InvalidReasonCharacters = regexp.MustCompile("[^A-Za-z0-9_,:]")
+
+const (
+	KubevirtClusterKind   = "KubevirtCluster"
+	TalosControlPlaneKind = "TalosControlPlane"
+)
 
 type DockyardsClusterReconciler struct {
 	client.Client
@@ -74,6 +82,28 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}()
 
+	kubevirtCluster := providerv1.KubevirtCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      dockyardsCluster.Name,
+			Namespace: dockyardsCluster.Namespace,
+		},
+	}
+	err = r.Get(ctx, req.NamespacedName, &kubevirtCluster)
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	talosControlPlane := controlplanev1.TalosControlPlane{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      dockyardsCluster.Name,
+			Namespace: dockyardsCluster.Namespace,
+		},
+	}
+	err = r.Get(ctx, req.NamespacedName, &talosControlPlane)
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
 	cluster := clusterv1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dockyardsCluster.Name,
@@ -84,9 +114,12 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	operationResult, err := controllerutil.CreateOrPatch(ctx, r.Client, &cluster, func() error {
 		controller := true
 
-		if cluster.Spec.Paused == nil {
-			cluster.Spec.Paused = ptr.To(false)
+		if cluster.Labels == nil {
+			cluster.Labels = make(map[string]string)
 		}
+
+		cluster.Labels[dockyardsv1.LabelClusterName] = dockyardsCluster.Name
+		cluster.Labels[dockyardsv1.LabelOrganizationName] = dockyardsCluster.Labels[dockyardsv1.LabelOrganizationName]
 
 		cluster.OwnerReferences = []metav1.OwnerReference{
 			{
@@ -97,6 +130,18 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				Controller:         &controller,
 				BlockOwnerDeletion: &controller,
 			},
+		}
+
+		cluster.Spec.InfrastructureRef = clusterv1.ContractVersionedObjectReference{
+			APIGroup: providerv1.GroupVersion.Group,
+			Kind:     KubevirtClusterKind,
+			Name:     kubevirtCluster.Name,
+		}
+
+		cluster.Spec.ControlPlaneRef = clusterv1.ContractVersionedObjectReference{
+			APIGroup: controlplanev1.GroupVersion.Group,
+			Kind:     TalosControlPlaneKind,
+			Name:     talosControlPlane.Name,
 		}
 
 		return nil
@@ -320,11 +365,51 @@ func (r *DockyardsClusterReconciler) dockyardsWorkloadToDockyardsCluster(_ conte
 	}
 }
 
+func (r *DockyardsClusterReconciler) talosControlPlaneToDockyardsCluster(_ context.Context, obj client.Object) []ctrl.Request {
+	tcp, ok := obj.(*controlplanev1.TalosControlPlane)
+	if !ok {
+		return nil
+	}
+
+	clusterName, has := tcp.Labels[dockyardsv1.LabelClusterName]
+	if !has || clusterName == "" {
+		return nil
+	}
+
+	return []ctrl.Request{{
+		NamespacedName: types.NamespacedName{
+			Name:      clusterName,
+			Namespace: tcp.Namespace,
+		},
+	}}
+}
+
+func (r *DockyardsClusterReconciler) kubevirtClusterToDockyardsCluster(_ context.Context, obj client.Object) []ctrl.Request {
+	kv, ok := obj.(*providerv1.KubevirtCluster)
+	if !ok {
+		return nil
+	}
+
+	clusterName, has := kv.Labels[dockyardsv1.LabelClusterName]
+	if !has || clusterName == "" {
+		return nil
+	}
+
+	return []ctrl.Request{{
+		NamespacedName: types.NamespacedName{
+			Name:      clusterName,
+			Namespace: kv.Namespace,
+		},
+	}}
+}
+
 func (r *DockyardsClusterReconciler) SetupWithManager(m ctrl.Manager) error {
 	scheme := m.GetScheme()
 
 	_ = clusterv1.AddToScheme(scheme)
 	_ = dockyardsv1.AddToScheme(scheme)
+	_ = providerv1.AddToScheme(scheme)
+	_ = controlplanev1.AddToScheme(scheme)
 
 	err := ctrl.NewControllerManagedBy(m).
 		For(&dockyardsv1.Cluster{}).
@@ -332,6 +417,14 @@ func (r *DockyardsClusterReconciler) SetupWithManager(m ctrl.Manager) error {
 		Watches(
 			&dockyardsv1.Workload{},
 			handler.EnqueueRequestsFromMapFunc(r.dockyardsWorkloadToDockyardsCluster),
+		).
+		Watches(
+			&controlplanev1.TalosControlPlane{},
+			handler.EnqueueRequestsFromMapFunc(r.talosControlPlaneToDockyardsCluster),
+		).
+		Watches(
+			&providerv1.KubevirtCluster{},
+			handler.EnqueueRequestsFromMapFunc(r.kubevirtClusterToDockyardsCluster),
 		).
 		Complete(r)
 	if err != nil {
