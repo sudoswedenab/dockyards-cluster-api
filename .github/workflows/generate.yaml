@@ -1,4 +1,4 @@
-# Copyright 2024 Sudo Sweden AB
+# Copyright 2026 Sudo Sweden AB
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,30 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: build
+name: generate
 on:
-  push:
-    branches:
-      - main
-      - feat/*
+  pull_request:
+    paths:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+      - .golangci.yaml
+      - Containerfile
+      - generate.go
+      - config/**
+      - controllers/**
+      - hack/**
+      - test/**
 permissions:
-  id-token: write
   contents: read
 jobs:
-  build:
+  go-generate:
     runs-on: ubuntu-latest
     steps:
-      - id: prep
-        run: |
-          branch=${GITHUB_REF##*/}
-          sha=${GITHUB_SHA::8}
-          ts=$(date +%s)
-          echo "buildid=${branch}-${sha}-${ts}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4.2.2
-      - uses: sudoswedenab/sudo-actions/build-push@main
+      - uses: actions/setup-go@v5.5.0
         with:
-          aws-region: us-east-1
-          image: sudosweden/dockyards-cluster-api
-          registry-type: public
-          role-to-assume: arn:aws:iam::075899289117:role/GithubActionsDockyardsClusterAPIPublic
-          tag: ${{ steps.prep.outputs.buildid }}
+          go-version-file: go.mod
+      - uses: sudoswedenab/sudo-actions/golang-generate@main

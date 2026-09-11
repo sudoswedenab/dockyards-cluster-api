@@ -17,10 +17,10 @@ package controllers
 import (
 	"context"
 
-	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
 	"github.com/sudoswedenab/dockyards-backend/api/apiutil"
+	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -80,7 +80,7 @@ func (r *MachineReconciler) reconcileDockyardsNode(ctx context.Context, machine 
 			return ctrl.Result{}, err
 		}
 
-		if cluster.Spec.ControlPlaneRef == nil {
+		if !cluster.Spec.ControlPlaneRef.IsDefined() {
 			logger.Info("ignoring machine with empty cluster control plane reference")
 
 			return ctrl.Result{}, nil
@@ -144,8 +144,8 @@ func (r *MachineReconciler) reconcileDockyardsNode(ctx context.Context, machine 
 		dockyardsNode.Labels[dockyardsv1.LabelNodeName] = machine.Name
 		dockyardsNode.Labels[MachineNameLabel] = machine.Name
 
-		if machine.Spec.ProviderID != nil {
-			dockyardsNode.Spec.ProviderID = machine.Spec.ProviderID
+		if machine.Spec.ProviderID != "" {
+			dockyardsNode.Spec.ProviderID = &machine.Spec.ProviderID
 		}
 
 		if machine.Status.NodeInfo != nil {

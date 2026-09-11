@@ -18,18 +18,19 @@ import (
 	"cmp"
 	"context"
 
-	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
+	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util"
 	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
+	capiv1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -111,9 +112,9 @@ func (r *DockyardsNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 func (r *DockyardsNodeReconciler) reconcileConditions(dockyardsNode *dockyardsv1.Node, ownerMachine *clusterv1.Machine) (ctrl.Result, error) {
-	v1beta2Conditions := ownerMachine.GetV1Beta2Conditions()
-	if v1beta2Conditions != nil {
-		readyCondition := meta.FindStatusCondition(v1beta2Conditions, clusterv1.MachineReadyV1Beta2Condition)
+	readyCondition := meta.FindStatusCondition(ownerMachine.Status.Conditions, clusterv1.MachineReadyCondition)
+	machineNodeHealthyCondition := meta.FindStatusCondition(ownerMachine.Status.Conditions, string(clusterv1.MachineNodeHealthyCondition))
+	if readyCondition != nil && machineNodeHealthyCondition == nil {
 
 		if readyCondition != nil {
 			condition := metav1.Condition{
@@ -134,7 +135,41 @@ func (r *DockyardsNodeReconciler) reconcileConditions(dockyardsNode *dockyardsv1
 		return ctrl.Result{}, nil
 	}
 
-	readyCondition := capiconditions.Get(ownerMachine, clusterv1.ReadyCondition)
+	legacyReadyCondition := capiv1beta1conditions.Get(ownerMachine, clusterv1.ReadyV1Beta1Condition)
+	legacyMachineNodeHealthyCondition := capiv1beta1conditions.Get(ownerMachine, clusterv1.MachineNodeHealthyV1Beta1Condition)
+	if legacyReadyCondition != nil || legacyMachineNodeHealthyCondition != nil {
+		if legacyReadyCondition != nil {
+			condition := metav1.Condition{
+				Type:               MachineReadyCondition,
+				Reason:             cmp.Or(legacyReadyCondition.Reason, dockyardsv1.ReadyReason),
+				Message:            legacyReadyCondition.Message,
+				LastTransitionTime: legacyReadyCondition.LastTransitionTime,
+				Status:             metav1.ConditionStatus(legacyReadyCondition.Status),
+			}
+
+			conditions.Set(dockyardsNode, &condition)
+		} else {
+			conditions.MarkFalse(dockyardsNode, MachineReadyCondition, WaitingForMachineReadyConditionReason, "")
+		}
+
+		if legacyMachineNodeHealthyCondition != nil {
+			condition := metav1.Condition{
+				Type:               string(clusterv1.MachineNodeHealthyCondition),
+				Reason:             cmp.Or(legacyMachineNodeHealthyCondition.Reason, dockyardsv1.ReadyReason),
+				Message:            legacyMachineNodeHealthyCondition.Message,
+				LastTransitionTime: legacyMachineNodeHealthyCondition.LastTransitionTime,
+				Status:             metav1.ConditionStatus(legacyMachineNodeHealthyCondition.Status),
+			}
+
+			conditions.Set(dockyardsNode, &condition)
+		} else {
+			conditions.MarkFalse(dockyardsNode, string(clusterv1.MachineNodeHealthyCondition), WaitingForNodeHealthyConditionReason, "")
+		}
+
+		return ctrl.Result{}, nil
+	}
+
+	readyCondition = capiconditions.Get(ownerMachine, clusterv1.ReadyCondition)
 	if readyCondition != nil {
 		condition := metav1.Condition{
 			Type:               MachineReadyCondition,
@@ -149,7 +184,7 @@ func (r *DockyardsNodeReconciler) reconcileConditions(dockyardsNode *dockyardsv1
 		conditions.MarkFalse(dockyardsNode, MachineReadyCondition, WaitingForMachineReadyConditionReason, "")
 	}
 
-	machineNodeHealthyCondition := capiconditions.Get(ownerMachine, clusterv1.MachineNodeHealthyCondition)
+	machineNodeHealthyCondition = capiconditions.Get(ownerMachine, clusterv1.MachineNodeHealthyCondition)
 	if machineNodeHealthyCondition != nil {
 		condition := metav1.Condition{
 			Type:               string(clusterv1.MachineNodeHealthyCondition),

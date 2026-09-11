@@ -18,15 +18,17 @@ import (
 	"context"
 	"testing"
 
-	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
-	"github.com/sudoswedenab/dockyards-cluster-api/test/mockcrds"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	controlplanev1 "github.com/siderolabs/cluster-api-control-plane-provider-talos/api/v1alpha3"
+	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
+	"github.com/sudoswedenab/dockyards-cluster-api/test/mockcrds"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	providerv1 "sigs.k8s.io/cluster-api-provider-kubevirt/api/v1alpha1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -54,6 +56,8 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 	_ = clusterv1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
 	_ = dockyardsv1.AddToScheme(scheme)
+	_ = controlplanev1.AddToScheme(scheme)
+	_ = providerv1.AddToScheme(scheme)
 
 	c, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
@@ -79,6 +83,82 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 		cmpopts.IgnoreFields(metav1.Condition{}, "ObservedGeneration", "LastTransitionTime"),
 	}
 
+	createClusterDependencies := func(t *testing.T, namespace string, name string) {
+		t.Helper()
+
+		kubevirtCluster := providerv1.KubevirtCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels: map[string]string{
+					dockyardsv1.LabelClusterName: name,
+				},
+			},
+		}
+
+		err := c.Create(ctx, &kubevirtCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		talosControlPlane := controlplanev1.TalosControlPlane{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels: map[string]string{
+					dockyardsv1.LabelClusterName: name,
+				},
+			},
+		}
+
+		err = c.Create(ctx, &talosControlPlane)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("test creates cluster with non-empty spec", func(t *testing.T) {
+		dockyardsCluster := dockyardsv1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "test-",
+				Namespace:    namespace.Name,
+			},
+		}
+
+		err := c.Create(ctx, &dockyardsCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		createClusterDependencies(t, dockyardsCluster.Namespace, dockyardsCluster.Name)
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      dockyardsCluster.Name,
+				Namespace: dockyardsCluster.Namespace,
+			},
+		}
+
+		_, err = r.Reconcile(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var cluster clusterv1.Cluster
+		err = c.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &cluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !cluster.Spec.InfrastructureRef.IsDefined() {
+			t.Fatalf("expected cluster spec.infrastructureRef to be set")
+		}
+
+		if !cluster.Spec.ControlPlaneRef.IsDefined() {
+			t.Fatalf("expected cluster spec.controlPlaneRef to be set")
+		}
+	})
+
 	t.Run("test v1beta2 conditions", func(t *testing.T) {
 		dockyardsCluster := dockyardsv1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{
@@ -91,6 +171,8 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		createClusterDependencies(t, dockyardsCluster.Namespace, dockyardsCluster.Name)
 
 		cluster := clusterv1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{
@@ -106,14 +188,12 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 		patch := client.MergeFrom(cluster.DeepCopy())
 
-		cluster.Status.V1Beta2 = &clusterv1.ClusterV1Beta2Status{
-			Conditions: []metav1.Condition{
-				{
-					Type:    clusterv1.AvailableV1Beta2Condition,
-					Status:  metav1.ConditionTrue,
-					Reason:  clusterv1.AvailableV1Beta2Reason,
-					Message: "",
-				},
+		cluster.Status.Conditions = []metav1.Condition{
+			{
+				Type:    clusterv1.ClusterAvailableCondition,
+				Status:  metav1.ConditionTrue,
+				Reason:  clusterv1.ClusterAvailableReason,
+				Message: "",
 			},
 		}
 
@@ -152,7 +232,7 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 					{
 						Type:   ClusterAvailableCondition,
 						Status: metav1.ConditionTrue,
-						Reason: clusterv1.AvailableV1Beta2Reason,
+						Reason: clusterv1.ClusterAvailableReason,
 					},
 					{
 						Type:   ClusterComponentsReadyCondition,
@@ -182,6 +262,8 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		createClusterDependencies(t, dockyardsCluster.Namespace, dockyardsCluster.Name)
+
 		cluster := clusterv1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      dockyardsCluster.Name,
@@ -196,12 +278,12 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 		patch := client.MergeFrom(cluster.DeepCopy())
 
-		cluster.Status.Conditions = clusterv1.Conditions{
+		cluster.SetV1Beta1Conditions(clusterv1.Conditions{
 			{
-				Type:   clusterv1.ReadyCondition,
+				Type:   clusterv1.ReadyV1Beta1Condition,
 				Status: corev1.ConditionTrue,
 			},
-		}
+		})
 
 		err = c.Status().Patch(ctx, &cluster, patch)
 		if err != nil {
@@ -273,6 +355,8 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		createClusterDependencies(t, dockyardsCluster.Namespace, dockyardsCluster.Name)
+
 		patch := client.MergeFrom(dockyardsCluster.DeepCopy())
 
 		dockyardsCluster.Status.Conditions = []metav1.Condition{
@@ -307,14 +391,12 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 		patch = client.MergeFrom(cluster.DeepCopy())
 
-		cluster.Status.V1Beta2 = &clusterv1.ClusterV1Beta2Status{
-			Conditions: []metav1.Condition{
-				{
-					Type:    clusterv1.AvailableV1Beta2Condition,
-					Status:  metav1.ConditionFalse,
-					Reason:  clusterv1.ClusterAvailableInternalErrorV1Beta2Reason,
-					Message: "",
-				},
+		cluster.Status.Conditions = []metav1.Condition{
+			{
+				Type:    clusterv1.ClusterAvailableCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  clusterv1.ClusterAvailableInternalErrorReason,
+				Message: "",
 			},
 		}
 
@@ -348,12 +430,12 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 					{
 						Type:   dockyardsv1.ReadyCondition,
 						Status: metav1.ConditionFalse,
-						Reason: clusterv1.InternalErrorV1Beta2Reason,
+						Reason: clusterv1.InternalErrorReason,
 					},
 					{
 						Type:   ClusterAvailableCondition,
 						Status: metav1.ConditionFalse,
-						Reason: clusterv1.InternalErrorV1Beta2Reason,
+						Reason: clusterv1.InternalErrorReason,
 					},
 					{
 						Type:   ClusterComponentsReadyCondition,
@@ -367,6 +449,72 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 		if !cmp.Equal(actual, expected, opts) {
 			t.Errorf("diff: %s", cmp.Diff(expected, actual, opts))
+		}
+	})
+}
+
+func TestDockyardsClusterController_MapFuncs(t *testing.T) {
+	r := DockyardsClusterReconciler{}
+
+	t.Run("talos control plane map func", func(t *testing.T) {
+		tcp := &controlplanev1.TalosControlPlane{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test-ns",
+				Labels: map[string]string{
+					dockyardsv1.LabelClusterName: "test-cluster",
+				},
+			},
+		}
+
+		requests := r.talosControlPlaneToDockyardsCluster(context.Background(), tcp)
+		expected := []ctrl.Request{{
+			NamespacedName: types.NamespacedName{Name: "test-cluster", Namespace: "test-ns"},
+		}}
+
+		if diff := cmp.Diff(expected, requests); diff != "" {
+			t.Fatalf("unexpected requests (-want +got): %s", diff)
+		}
+	})
+
+	t.Run("talos control plane map func missing label", func(t *testing.T) {
+		tcp := &controlplanev1.TalosControlPlane{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+		}
+
+		requests := r.talosControlPlaneToDockyardsCluster(context.Background(), tcp)
+		if requests != nil {
+			t.Fatalf("expected nil requests, got %#v", requests)
+		}
+	})
+
+	t.Run("kubevirt cluster map func", func(t *testing.T) {
+		kv := &providerv1.KubevirtCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test-ns",
+				Labels: map[string]string{
+					dockyardsv1.LabelClusterName: "test-cluster",
+				},
+			},
+		}
+
+		requests := r.kubevirtClusterToDockyardsCluster(context.Background(), kv)
+		expected := []ctrl.Request{{
+			NamespacedName: types.NamespacedName{Name: "test-cluster", Namespace: "test-ns"},
+		}}
+
+		if diff := cmp.Diff(expected, requests); diff != "" {
+			t.Fatalf("unexpected requests (-want +got): %s", diff)
+		}
+	})
+
+	t.Run("kubevirt cluster map func missing label", func(t *testing.T) {
+		kv := &providerv1.KubevirtCluster{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+		}
+
+		requests := r.kubevirtClusterToDockyardsCluster(context.Background(), kv)
+		if requests != nil {
+			t.Fatalf("expected nil requests, got %#v", requests)
 		}
 	})
 }

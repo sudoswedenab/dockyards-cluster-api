@@ -18,16 +18,19 @@ import (
 	"context"
 	"regexp"
 
-	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
 	semverv3 "github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
+	controlplanev1 "github.com/siderolabs/cluster-api-control-plane-provider-talos/api/v1alpha3"
+	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	providerv1 "sigs.k8s.io/cluster-api-provider-kubevirt/api/v1alpha1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	capiconditions "sigs.k8s.io/cluster-api/util/conditions"
+	capiv1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -36,12 +39,17 @@ import (
 
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=create;get;list;patch;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=taloscontrolplanes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dockyards.io,resources=clusters/status,verbs=patch
 // +kubebuilder:rbac:groups=dockyards.io,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=dockyards.io,resources=workloads,verbs=get;list;watch
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kubevirtclusters,verbs=get;list;watch
 
-var (
-	InvalidReasonCharacters = regexp.MustCompile("[^A-Za-z0-9_,:]")
+var InvalidReasonCharacters = regexp.MustCompile("[^A-Za-z0-9_,:]")
+
+const (
+	KubevirtClusterKind   = "KubevirtCluster"
+	TalosControlPlaneKind = "TalosControlPlane"
 )
 
 type DockyardsClusterReconciler struct {
@@ -74,6 +82,28 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}()
 
+	kubevirtCluster := providerv1.KubevirtCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      dockyardsCluster.Name,
+			Namespace: dockyardsCluster.Namespace,
+		},
+	}
+	err = r.Get(ctx, req.NamespacedName, &kubevirtCluster)
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	talosControlPlane := controlplanev1.TalosControlPlane{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      dockyardsCluster.Name,
+			Namespace: dockyardsCluster.Namespace,
+		},
+	}
+	err = r.Get(ctx, req.NamespacedName, &talosControlPlane)
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
 	cluster := clusterv1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dockyardsCluster.Name,
@@ -84,6 +114,13 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	operationResult, err := controllerutil.CreateOrPatch(ctx, r.Client, &cluster, func() error {
 		controller := true
 
+		if cluster.Labels == nil {
+			cluster.Labels = make(map[string]string)
+		}
+
+		cluster.Labels[dockyardsv1.LabelClusterName] = dockyardsCluster.Name
+		cluster.Labels[dockyardsv1.LabelOrganizationName] = dockyardsCluster.Labels[dockyardsv1.LabelOrganizationName]
+
 		cluster.OwnerReferences = []metav1.OwnerReference{
 			{
 				APIVersion:         dockyardsv1.GroupVersion.String(),
@@ -93,6 +130,18 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				Controller:         &controller,
 				BlockOwnerDeletion: &controller,
 			},
+		}
+
+		cluster.Spec.InfrastructureRef = clusterv1.ContractVersionedObjectReference{
+			APIGroup: providerv1.GroupVersion.Group,
+			Kind:     KubevirtClusterKind,
+			Name:     kubevirtCluster.Name,
+		}
+
+		cluster.Spec.ControlPlaneRef = clusterv1.ContractVersionedObjectReference{
+			APIGroup: controlplanev1.GroupVersion.Group,
+			Kind:     TalosControlPlaneKind,
+			Name:     talosControlPlane.Name,
 		}
 
 		return nil
@@ -122,11 +171,11 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	clusterVersion := semverv3.New(3, 2, 1, "", "")
 	for _, clusterAPIMachine := range machineList.Items {
-		if clusterAPIMachine.Spec.Version == nil {
+		if clusterAPIMachine.Spec.Version == "" {
 			continue
 		}
 
-		machineVersion, err := semverv3.NewVersion(*clusterAPIMachine.Spec.Version)
+		machineVersion, err := semverv3.NewVersion(clusterAPIMachine.Spec.Version)
 		if err != nil {
 			continue
 		}
@@ -172,24 +221,74 @@ func (r *DockyardsClusterReconciler) reconcileConditions(ctx context.Context, do
 		conditions.MarkTrue(dockyardsCluster, ClusterComponentsReadyCondition, dockyardsv1.ReadyReason, "")
 	}
 
-	if cluster.Status.V1Beta2 != nil {
-		availableCondition := meta.FindStatusCondition(cluster.Status.V1Beta2.Conditions, clusterv1.AvailableV1Beta2Condition)
-		if availableCondition != nil {
+	availableCondition := meta.FindStatusCondition(cluster.Status.Conditions, clusterv1.ClusterAvailableCondition)
+	if availableCondition != nil {
+		condition := metav1.Condition{
+			Type:               ClusterAvailableCondition,
+			Status:             availableCondition.Status,
+			Reason:             availableCondition.Reason,
+			Message:            availableCondition.Message,
+			LastTransitionTime: availableCondition.LastTransitionTime,
+		}
+
+		conditions.Set(dockyardsCluster, &condition)
+
+		conditions.Delete(dockyardsCluster, ClusterReadyCondition)
+		conditions.Delete(dockyardsCluster, ClusterControlPlaneReadyCondition)
+
+		return ctrl.Result{}, nil
+	}
+
+	legacyClusterReadyCondition := capiv1beta1conditions.Get(cluster, clusterv1.ReadyV1Beta1Condition)
+	legacyControlPlaneReadyCondition := capiv1beta1conditions.Get(cluster, clusterv1.ControlPlaneReadyV1Beta1Condition)
+	if legacyClusterReadyCondition != nil || legacyControlPlaneReadyCondition != nil {
+		conditions.Delete(dockyardsCluster, ClusterAvailableCondition)
+
+		if legacyClusterReadyCondition != nil {
 			condition := metav1.Condition{
-				Type:               ClusterAvailableCondition,
-				Status:             availableCondition.Status,
-				Reason:             availableCondition.Reason,
-				Message:            availableCondition.Message,
-				LastTransitionTime: availableCondition.LastTransitionTime,
+				Type:               ClusterReadyCondition,
+				Status:             metav1.ConditionStatus(legacyClusterReadyCondition.Status),
+				Reason:             legacyClusterReadyCondition.Reason,
+				Message:            legacyClusterReadyCondition.Message,
+				LastTransitionTime: legacyClusterReadyCondition.LastTransitionTime,
+			}
+
+			if InvalidReasonCharacters.FindString(condition.Reason) != "" {
+				condition.Message = condition.Reason
+				condition.Reason = WaitingForClusterFallbackReason
+			}
+
+			if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
+				condition.Reason = dockyardsv1.ReadyReason
 			}
 
 			conditions.Set(dockyardsCluster, &condition)
 		} else {
-			conditions.MarkFalse(dockyardsCluster, ClusterAvailableCondition, WaitingForClusterAvailableConditionReason, "")
+			conditions.MarkFalse(dockyardsCluster, ClusterReadyCondition, WaitingForClusterReadyConditionReason, "")
 		}
 
-		conditions.Delete(dockyardsCluster, ClusterReadyCondition)
-		conditions.Delete(dockyardsCluster, ClusterControlPlaneReadyCondition)
+		if legacyControlPlaneReadyCondition != nil {
+			condition := metav1.Condition{
+				Type:               ClusterControlPlaneReadyCondition,
+				Status:             metav1.ConditionStatus(legacyControlPlaneReadyCondition.Status),
+				Reason:             legacyControlPlaneReadyCondition.Reason,
+				Message:            legacyControlPlaneReadyCondition.Message,
+				LastTransitionTime: legacyControlPlaneReadyCondition.LastTransitionTime,
+			}
+
+			if InvalidReasonCharacters.FindString(condition.Reason) != "" {
+				condition.Message = condition.Reason
+				condition.Reason = WaitingForClusterControlPlaneFallbackReason
+			}
+
+			if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
+				condition.Reason = dockyardsv1.ReadyReason
+			}
+
+			conditions.Set(dockyardsCluster, &condition)
+		} else {
+			conditions.MarkFalse(dockyardsCluster, ClusterControlPlaneReadyCondition, WaitingForClusterControlPlaneReadyConditionReason, "")
+		}
 
 		return ctrl.Result{}, nil
 	}
@@ -218,7 +317,7 @@ func (r *DockyardsClusterReconciler) reconcileConditions(ctx context.Context, do
 		conditions.MarkFalse(dockyardsCluster, ClusterReadyCondition, WaitingForClusterReadyConditionReason, "")
 	}
 
-	controlPlaneReadyCondition := capiconditions.Get(cluster, clusterv1.ControlPlaneReadyCondition)
+	controlPlaneReadyCondition := capiconditions.Get(cluster, clusterv1.ClusterControlPlaneAvailableCondition)
 	if controlPlaneReadyCondition != nil {
 		condition := metav1.Condition{
 			Type:               ClusterControlPlaneReadyCondition,
@@ -266,11 +365,51 @@ func (r *DockyardsClusterReconciler) dockyardsWorkloadToDockyardsCluster(_ conte
 	}
 }
 
+func (r *DockyardsClusterReconciler) talosControlPlaneToDockyardsCluster(_ context.Context, obj client.Object) []ctrl.Request {
+	tcp, ok := obj.(*controlplanev1.TalosControlPlane)
+	if !ok {
+		return nil
+	}
+
+	clusterName, has := tcp.Labels[dockyardsv1.LabelClusterName]
+	if !has || clusterName == "" {
+		return nil
+	}
+
+	return []ctrl.Request{{
+		NamespacedName: types.NamespacedName{
+			Name:      clusterName,
+			Namespace: tcp.Namespace,
+		},
+	}}
+}
+
+func (r *DockyardsClusterReconciler) kubevirtClusterToDockyardsCluster(_ context.Context, obj client.Object) []ctrl.Request {
+	kv, ok := obj.(*providerv1.KubevirtCluster)
+	if !ok {
+		return nil
+	}
+
+	clusterName, has := kv.Labels[dockyardsv1.LabelClusterName]
+	if !has || clusterName == "" {
+		return nil
+	}
+
+	return []ctrl.Request{{
+		NamespacedName: types.NamespacedName{
+			Name:      clusterName,
+			Namespace: kv.Namespace,
+		},
+	}}
+}
+
 func (r *DockyardsClusterReconciler) SetupWithManager(m ctrl.Manager) error {
 	scheme := m.GetScheme()
 
 	_ = clusterv1.AddToScheme(scheme)
 	_ = dockyardsv1.AddToScheme(scheme)
+	_ = providerv1.AddToScheme(scheme)
+	_ = controlplanev1.AddToScheme(scheme)
 
 	err := ctrl.NewControllerManagedBy(m).
 		For(&dockyardsv1.Cluster{}).
@@ -278,6 +417,14 @@ func (r *DockyardsClusterReconciler) SetupWithManager(m ctrl.Manager) error {
 		Watches(
 			&dockyardsv1.Workload{},
 			handler.EnqueueRequestsFromMapFunc(r.dockyardsWorkloadToDockyardsCluster),
+		).
+		Watches(
+			&controlplanev1.TalosControlPlane{},
+			handler.EnqueueRequestsFromMapFunc(r.talosControlPlaneToDockyardsCluster),
+		).
+		Watches(
+			&providerv1.KubevirtCluster{},
+			handler.EnqueueRequestsFromMapFunc(r.kubevirtClusterToDockyardsCluster),
 		).
 		Complete(r)
 	if err != nil {
