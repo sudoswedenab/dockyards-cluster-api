@@ -48,8 +48,9 @@ import (
 var InvalidReasonCharacters = regexp.MustCompile("[^A-Za-z0-9_,:]")
 
 const (
-	KubevirtClusterKind   = "KubevirtCluster"
-	TalosControlPlaneKind = "TalosControlPlane"
+	KubevirtClusterKind         = "KubevirtCluster"
+	TalosControlPlaneKind       = "TalosControlPlane"
+	TalosControlPlaneNameSuffix = "-controlplane"
 )
 
 type DockyardsClusterReconciler struct {
@@ -95,11 +96,11 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	talosControlPlane := controlplanev1.TalosControlPlane{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      dockyardsCluster.Name,
+			Name:      dockyardsCluster.Name + TalosControlPlaneNameSuffix,
 			Namespace: dockyardsCluster.Namespace,
 		},
 	}
-	err = r.Get(ctx, req.NamespacedName, &talosControlPlane)
+	err = r.Get(ctx, client.ObjectKeyFromObject(&talosControlPlane), &talosControlPlane)
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}

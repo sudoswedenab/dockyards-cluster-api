@@ -103,7 +103,7 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 		talosControlPlane := controlplanev1.TalosControlPlane{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
+				Name:      name + TalosControlPlaneNameSuffix,
 				Namespace: namespace,
 				Labels: map[string]string{
 					dockyardsv1.LabelClusterName: name,
@@ -156,6 +156,10 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 		if !cluster.Spec.ControlPlaneRef.IsDefined() {
 			t.Fatalf("expected cluster spec.controlPlaneRef to be set")
+		}
+
+		if got, want := cluster.Spec.ControlPlaneRef.Name, dockyardsCluster.Name+TalosControlPlaneNameSuffix; got != want {
+			t.Fatalf("expected cluster spec.controlPlaneRef.name to be %q, got %q", want, got)
 		}
 	})
 
