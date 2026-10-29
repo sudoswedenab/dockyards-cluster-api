@@ -16,6 +16,8 @@ package controllers
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"regexp"
 
 	semverv3 "github.com/Masterminds/semver/v3"
@@ -44,6 +46,7 @@ import (
 // +kubebuilder:rbac:groups=dockyards.io,resources=workloads,verbs=get;list;watch
 
 var InvalidReasonCharacters = regexp.MustCompile("[^A-Za-z0-9_,:]")
+var errMultipleTalosControlPlanes = errors.New("multiple talos control planes")
 
 const (
 	TalosControlPlaneKind       = "TalosControlPlane"
@@ -80,15 +83,22 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}()
 
-	talosControlPlane := controlplanev1.TalosControlPlane{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      dockyardsCluster.Name + TalosControlPlaneNameSuffix,
-			Namespace: dockyardsCluster.Namespace,
-		},
-	}
-	err = r.Get(ctx, client.ObjectKeyFromObject(&talosControlPlane), &talosControlPlane)
+	talosControlPlaneName, err := r.resolveTalosControlPlaneName(ctx, &dockyardsCluster)
 	if err != nil {
+		if errors.Is(err, errMultipleTalosControlPlanes) {
+			conditions.MarkFalse(&dockyardsCluster, ControlPlaneRefReconciledCondition, MultipleTalosControlPlanesReason, "%s", err)
+
+			return ctrl.Result{}, nil
+		}
+
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if talosControlPlaneName == "" {
+		conditions.MarkFalse(&dockyardsCluster, ControlPlaneRefReconciledCondition, WaitingForTalosControlPlaneReason, "")
+		logger.Info("waiting for talos control plane")
+
+		return ctrl.Result{}, nil
 	}
 
 	cluster := clusterv1.Cluster{
@@ -122,7 +132,7 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		cluster.Spec.ControlPlaneRef = clusterv1.ContractVersionedObjectReference{
 			APIGroup: controlplanev1.GroupVersion.Group,
 			Kind:     TalosControlPlaneKind,
-			Name:     talosControlPlane.Name,
+			Name:     talosControlPlaneName,
 		}
 
 		return nil
@@ -134,6 +144,8 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if operationResult != controllerutil.OperationResultNone {
 		logger.Info("reconciled cluster-api cluster", "result", operationResult)
 	}
+
+	conditions.MarkTrue(&dockyardsCluster, ControlPlaneRefReconciledCondition, dockyardsv1.ReadyReason, "")
 
 	result, err = r.reconcileConditions(ctx, &dockyardsCluster, &cluster)
 	if err != nil {
@@ -169,6 +181,46 @@ func (r *DockyardsClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	dockyardsCluster.Status.Version = clusterVersion.Original()
 
 	return ctrl.Result{}, nil
+}
+
+func (r *DockyardsClusterReconciler) resolveTalosControlPlaneName(ctx context.Context, dockyardsCluster *dockyardsv1.Cluster) (string, error) {
+	legacyName := dockyardsCluster.Name + TalosControlPlaneNameSuffix
+
+	legacyTalosControlPlane := controlplanev1.TalosControlPlane{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      legacyName,
+			Namespace: dockyardsCluster.Namespace,
+		},
+	}
+
+	err := r.Get(ctx, client.ObjectKeyFromObject(&legacyTalosControlPlane), &legacyTalosControlPlane)
+	if err == nil {
+		return legacyName, nil
+	}
+
+	if client.IgnoreNotFound(err) != nil {
+		return "", err
+	}
+
+	matchingLabels := client.MatchingLabels{
+		dockyardsv1.LabelClusterName: dockyardsCluster.Name,
+	}
+
+	var talosControlPlaneList controlplanev1.TalosControlPlaneList
+	err = r.List(ctx, &talosControlPlaneList, matchingLabels, client.InNamespace(dockyardsCluster.Namespace))
+	if err != nil {
+		return "", err
+	}
+
+	if len(talosControlPlaneList.Items) == 0 {
+		return "", nil
+	}
+
+	if len(talosControlPlaneList.Items) > 1 {
+		return "", fmt.Errorf("%w for cluster %s/%s", errMultipleTalosControlPlanes, dockyardsCluster.Namespace, dockyardsCluster.Name)
+	}
+
+	return talosControlPlaneList.Items[0].Name, nil
 }
 
 func (r *DockyardsClusterReconciler) reconcileConditions(ctx context.Context, dockyardsCluster *dockyardsv1.Cluster, cluster *clusterv1.Cluster) (ctrl.Result, error) {
@@ -224,52 +276,7 @@ func (r *DockyardsClusterReconciler) reconcileConditions(ctx context.Context, do
 	legacyControlPlaneReadyCondition := capiv1beta1conditions.Get(cluster, clusterv1.ControlPlaneReadyV1Beta1Condition)
 	if legacyClusterReadyCondition != nil || legacyControlPlaneReadyCondition != nil {
 		conditions.Delete(dockyardsCluster, ClusterAvailableCondition)
-
-		if legacyClusterReadyCondition != nil {
-			condition := metav1.Condition{
-				Type:               ClusterReadyCondition,
-				Status:             metav1.ConditionStatus(legacyClusterReadyCondition.Status),
-				Reason:             legacyClusterReadyCondition.Reason,
-				Message:            legacyClusterReadyCondition.Message,
-				LastTransitionTime: legacyClusterReadyCondition.LastTransitionTime,
-			}
-
-			if InvalidReasonCharacters.FindString(condition.Reason) != "" {
-				condition.Message = condition.Reason
-				condition.Reason = WaitingForClusterFallbackReason
-			}
-
-			if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
-				condition.Reason = dockyardsv1.ReadyReason
-			}
-
-			conditions.Set(dockyardsCluster, &condition)
-		} else {
-			conditions.MarkFalse(dockyardsCluster, ClusterReadyCondition, WaitingForClusterReadyConditionReason, "")
-		}
-
-		if legacyControlPlaneReadyCondition != nil {
-			condition := metav1.Condition{
-				Type:               ClusterControlPlaneReadyCondition,
-				Status:             metav1.ConditionStatus(legacyControlPlaneReadyCondition.Status),
-				Reason:             legacyControlPlaneReadyCondition.Reason,
-				Message:            legacyControlPlaneReadyCondition.Message,
-				LastTransitionTime: legacyControlPlaneReadyCondition.LastTransitionTime,
-			}
-
-			if InvalidReasonCharacters.FindString(condition.Reason) != "" {
-				condition.Message = condition.Reason
-				condition.Reason = WaitingForClusterControlPlaneFallbackReason
-			}
-
-			if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
-				condition.Reason = dockyardsv1.ReadyReason
-			}
-
-			conditions.Set(dockyardsCluster, &condition)
-		} else {
-			conditions.MarkFalse(dockyardsCluster, ClusterControlPlaneReadyCondition, WaitingForClusterControlPlaneReadyConditionReason, "")
-		}
+		r.reconcileLegacyConditions(dockyardsCluster, cluster)
 
 		return ctrl.Result{}, nil
 	}
@@ -323,6 +330,56 @@ func (r *DockyardsClusterReconciler) reconcileConditions(ctx context.Context, do
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *DockyardsClusterReconciler) reconcileLegacyConditions(dockyardsCluster *dockyardsv1.Cluster, cluster *clusterv1.Cluster) {
+	legacyClusterReadyCondition := capiv1beta1conditions.Get(cluster, clusterv1.ReadyV1Beta1Condition)
+	if legacyClusterReadyCondition != nil {
+		condition := metav1.Condition{
+			Type:               ClusterReadyCondition,
+			Status:             metav1.ConditionStatus(legacyClusterReadyCondition.Status),
+			Reason:             legacyClusterReadyCondition.Reason,
+			Message:            legacyClusterReadyCondition.Message,
+			LastTransitionTime: legacyClusterReadyCondition.LastTransitionTime,
+		}
+
+		if InvalidReasonCharacters.FindString(condition.Reason) != "" {
+			condition.Message = condition.Reason
+			condition.Reason = WaitingForClusterFallbackReason
+		}
+
+		if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
+			condition.Reason = dockyardsv1.ReadyReason
+		}
+
+		conditions.Set(dockyardsCluster, &condition)
+	} else {
+		conditions.MarkFalse(dockyardsCluster, ClusterReadyCondition, WaitingForClusterReadyConditionReason, "")
+	}
+
+	legacyControlPlaneReadyCondition := capiv1beta1conditions.Get(cluster, clusterv1.ControlPlaneReadyV1Beta1Condition)
+	if legacyControlPlaneReadyCondition != nil {
+		condition := metav1.Condition{
+			Type:               ClusterControlPlaneReadyCondition,
+			Status:             metav1.ConditionStatus(legacyControlPlaneReadyCondition.Status),
+			Reason:             legacyControlPlaneReadyCondition.Reason,
+			Message:            legacyControlPlaneReadyCondition.Message,
+			LastTransitionTime: legacyControlPlaneReadyCondition.LastTransitionTime,
+		}
+
+		if InvalidReasonCharacters.FindString(condition.Reason) != "" {
+			condition.Message = condition.Reason
+			condition.Reason = WaitingForClusterControlPlaneFallbackReason
+		}
+
+		if condition.Status == metav1.ConditionTrue && condition.Reason == "" {
+			condition.Reason = dockyardsv1.ReadyReason
+		}
+
+		conditions.Set(dockyardsCluster, &condition)
+	} else {
+		conditions.MarkFalse(dockyardsCluster, ClusterControlPlaneReadyCondition, WaitingForClusterControlPlaneReadyConditionReason, "")
+	}
 }
 
 func (r *DockyardsClusterReconciler) dockyardsWorkloadToDockyardsCluster(_ context.Context, obj client.Object) []ctrl.Request {
