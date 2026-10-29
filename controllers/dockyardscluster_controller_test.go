@@ -140,6 +140,77 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 		if got, want := cluster.Spec.ControlPlaneRef.Name, dockyardsCluster.Name+TalosControlPlaneNameSuffix; got != want {
 			t.Fatalf("expected cluster spec.controlPlaneRef.name to be %q, got %q", want, got)
 		}
+
+		var actualDockyardsCluster dockyardsv1.Cluster
+		err = c.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &actualDockyardsCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !conditionsHasReason(actualDockyardsCluster.Status.Conditions, ControlPlaneRefReconciledCondition, dockyardsv1.ReadyReason) {
+			t.Fatalf("expected %s condition with reason %s", ControlPlaneRefReconciledCondition, dockyardsv1.ReadyReason)
+		}
+	})
+
+	t.Run("test resolves control plane ref from labeled talos control plane", func(t *testing.T) {
+		dockyardsCluster := dockyardsv1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "test-",
+				Namespace:    namespace.Name,
+			},
+		}
+
+		err := c.Create(ctx, &dockyardsCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		talosControlPlane := controlplanev1.TalosControlPlane{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      dockyardsCluster.Name + "-cp-a",
+				Namespace: dockyardsCluster.Namespace,
+				Labels: map[string]string{
+					dockyardsv1.LabelClusterName: dockyardsCluster.Name,
+				},
+			},
+		}
+
+		err = c.Create(ctx, &talosControlPlane)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      dockyardsCluster.Name,
+				Namespace: dockyardsCluster.Namespace,
+			},
+		}
+
+		_, err = r.Reconcile(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var cluster clusterv1.Cluster
+		err = c.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &cluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got, want := cluster.Spec.ControlPlaneRef.Name, talosControlPlane.Name; got != want {
+			t.Fatalf("expected cluster spec.controlPlaneRef.name to be %q, got %q", want, got)
+		}
+
+		var actualDockyardsCluster dockyardsv1.Cluster
+		err = c.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &actualDockyardsCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !conditionsHasReason(actualDockyardsCluster.Status.Conditions, ControlPlaneRefReconciledCondition, dockyardsv1.ReadyReason) {
+			t.Fatalf("expected %s condition with reason %s", ControlPlaneRefReconciledCondition, dockyardsv1.ReadyReason)
+		}
 	})
 
 	t.Run("test waits for talos control plane to exist", func(t *testing.T) {
@@ -175,6 +246,92 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 		if client.IgnoreNotFound(err) != nil {
 			t.Fatalf("expected not found error, got %v", err)
+		}
+
+		var actualDockyardsCluster dockyardsv1.Cluster
+		err = c.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &actualDockyardsCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !conditionsHasReason(actualDockyardsCluster.Status.Conditions, ControlPlaneRefReconciledCondition, WaitingForTalosControlPlaneReason) {
+			t.Fatalf("expected %s condition with reason %s", ControlPlaneRefReconciledCondition, WaitingForTalosControlPlaneReason)
+		}
+	})
+
+	t.Run("test fails with multiple labeled talos control planes", func(t *testing.T) {
+		dockyardsCluster := dockyardsv1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "test-",
+				Namespace:    namespace.Name,
+			},
+		}
+
+		err := c.Create(ctx, &dockyardsCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		talosControlPlaneA := controlplanev1.TalosControlPlane{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      dockyardsCluster.Name + "-cp-a",
+				Namespace: dockyardsCluster.Namespace,
+				Labels: map[string]string{
+					dockyardsv1.LabelClusterName: dockyardsCluster.Name,
+				},
+			},
+		}
+
+		talosControlPlaneB := controlplanev1.TalosControlPlane{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      dockyardsCluster.Name + "-cp-b",
+				Namespace: dockyardsCluster.Namespace,
+				Labels: map[string]string{
+					dockyardsv1.LabelClusterName: dockyardsCluster.Name,
+				},
+			},
+		}
+
+		err = c.Create(ctx, &talosControlPlaneA)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = c.Create(ctx, &talosControlPlaneB)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      dockyardsCluster.Name,
+				Namespace: dockyardsCluster.Namespace,
+			},
+		}
+
+		_, err = r.Reconcile(ctx, req)
+		if err != nil {
+			t.Fatalf("expected reconcile to surface condition without error, got %v", err)
+		}
+
+		var cluster clusterv1.Cluster
+		err = c.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &cluster)
+		if err == nil {
+			t.Fatalf("expected cluster-api cluster to not be created with multiple talos control planes")
+		}
+
+		if client.IgnoreNotFound(err) != nil {
+			t.Fatalf("expected not found error, got %v", err)
+		}
+
+		var actualDockyardsCluster dockyardsv1.Cluster
+		err = c.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &actualDockyardsCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !conditionsHasReason(actualDockyardsCluster.Status.Conditions, ControlPlaneRefReconciledCondition, MultipleTalosControlPlanesReason) {
+			t.Fatalf("expected %s condition with reason %s", ControlPlaneRefReconciledCondition, MultipleTalosControlPlanesReason)
 		}
 	})
 
@@ -317,6 +474,11 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 						Status: metav1.ConditionTrue,
 						Reason: dockyardsv1.ReadyReason,
 					},
+					{
+						Type:   ControlPlaneRefReconciledCondition,
+						Status: metav1.ConditionTrue,
+						Reason: dockyardsv1.ReadyReason,
+					},
 				},
 				Version: "3.2.1",
 			},
@@ -407,6 +569,11 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 					},
 					{
 						Type:   ClusterReadyCondition,
+						Status: metav1.ConditionTrue,
+						Reason: dockyardsv1.ReadyReason,
+					},
+					{
+						Type:   ControlPlaneRefReconciledCondition,
 						Status: metav1.ConditionTrue,
 						Reason: dockyardsv1.ReadyReason,
 					},
@@ -520,6 +687,11 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 						Status: metav1.ConditionTrue,
 						Reason: dockyardsv1.ReadyReason,
 					},
+					{
+						Type:   ControlPlaneRefReconciledCondition,
+						Status: metav1.ConditionTrue,
+						Reason: dockyardsv1.ReadyReason,
+					},
 				},
 				Version: "3.2.1",
 			},
@@ -565,4 +737,14 @@ func TestDockyardsClusterController_MapFuncs(t *testing.T) {
 		}
 	})
 
+}
+
+func conditionsHasReason(conditions []metav1.Condition, conditionType, reason string) bool {
+	for _, condition := range conditions {
+		if condition.Type == conditionType && condition.Reason == reason {
+			return true
+		}
+	}
+
+	return false
 }

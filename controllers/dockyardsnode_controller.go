@@ -115,7 +115,6 @@ func (r *DockyardsNodeReconciler) reconcileConditions(dockyardsNode *dockyardsv1
 	readyCondition := meta.FindStatusCondition(ownerMachine.Status.Conditions, clusterv1.MachineReadyCondition)
 	machineNodeHealthyCondition := meta.FindStatusCondition(ownerMachine.Status.Conditions, string(clusterv1.MachineNodeHealthyCondition))
 	if readyCondition != nil && machineNodeHealthyCondition == nil {
-
 		if readyCondition != nil {
 			condition := metav1.Condition{
 				Type:               MachineReadyCondition,

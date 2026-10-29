@@ -16,6 +16,7 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudoswedenab/dockyards-backend/api/apiutil"
 	dockyardsv1 "github.com/sudoswedenab/dockyards-backend/api/v1alpha3"
@@ -159,7 +160,7 @@ func (r *MachineReconciler) reconcileDockyardsNode(ctx context.Context, machine 
 	}
 
 	if operationResult == controllerutil.OperationResultCreated {
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
 	if operationResult != controllerutil.OperationResultNone {

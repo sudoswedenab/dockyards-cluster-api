@@ -15,16 +15,19 @@
 package controllers
 
 const (
-	MachineReadyCondition             string = "MachineReady"
-	ClusterReadyCondition             string = "ClusterReady"
-	ClusterControlPlaneReadyCondition string = "ClusterControlPlaneReady"
-	ClusterComponentsReadyCondition   string = "ClusterComponentsReady"
+	MachineReadyCondition              string = "MachineReady"
+	ClusterReadyCondition              string = "ClusterReady"
+	ClusterControlPlaneReadyCondition  string = "ClusterControlPlaneReady"
+	ClusterComponentsReadyCondition    string = "ClusterComponentsReady"
+	ControlPlaneRefReconciledCondition string = "ControlPlaneRefReconciled"
 
 	WaitingForMachineReadyConditionReason             string = "WaitingForMachineReadyCondition"
 	WaitingForNodeHealthyConditionReason              string = "WaitingForNodeHealthyCondition"
 	WaitingForClusterReadyConditionReason             string = "WaitingForClusterReadyCondition"
 	WaitingForClusterControlPlaneReadyConditionReason string = "WaitingForClusterControlPlaneReadyCondition"
 	WaitingForClusterComponentReadyConditionReason    string = "WaitingForClusterComponentReadyCondition"
+	WaitingForTalosControlPlaneReason                 string = "WaitingForTalosControlPlane"
+	MultipleTalosControlPlanesReason                  string = "MultipleTalosControlPlanes"
 	WaitingForClusterFallbackReason                   string = "WaitingForCluster"
 	WaitingForClusterControlPlaneFallbackReason       string = "WaitingForClusterControlPlane"
 )
