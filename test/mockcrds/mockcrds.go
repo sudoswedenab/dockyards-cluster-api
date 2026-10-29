@@ -20,7 +20,6 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
-	providerv1 "sigs.k8s.io/cluster-api-provider-kubevirt/api/v1alpha1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
@@ -30,7 +29,6 @@ var (
 	DockyardsWorkload = mockCRD(dockyardsv1.WorkloadKind, "workloads", dockyardsv1.GroupVersion.Group, dockyardsv1.GroupVersion.Version)
 	ClusterAPIMachine = mockCRD("Machine", "machines", clusterv1.GroupVersion.Group, clusterv1.GroupVersion.Version)
 	ClusterAPICluster = mockCRD("Cluster", "clusters", clusterv1.GroupVersion.Group, clusterv1.GroupVersion.Version)
-	KubevirtCluster   = mockCRD("KubevirtCluster", "kubevirtclusters", providerv1.GroupVersion.Group, providerv1.GroupVersion.Version)
 	TalosControlPlane = mockCRD("TalosControlPlane", "taloscontrolplanes", controlplanev1.GroupVersion.Group, controlplanev1.GroupVersion.Version)
 
 	CRDs = []*apiextensionsv1.CustomResourceDefinition{
@@ -39,7 +37,6 @@ var (
 		DockyardsWorkload,
 		ClusterAPIMachine,
 		ClusterAPICluster,
-		KubevirtCluster,
 		TalosControlPlane,
 	}
 )
