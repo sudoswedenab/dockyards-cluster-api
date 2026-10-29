@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	providerv1 "sigs.k8s.io/cluster-api-provider-kubevirt/api/v1alpha1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -57,7 +56,6 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 	_ = dockyardsv1.AddToScheme(scheme)
 	_ = controlplanev1.AddToScheme(scheme)
-	_ = providerv1.AddToScheme(scheme)
 
 	c, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
@@ -85,21 +83,6 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 
 	createClusterDependencies := func(t *testing.T, namespace string, name string) {
 		t.Helper()
-
-		kubevirtCluster := providerv1.KubevirtCluster{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: namespace,
-				Labels: map[string]string{
-					dockyardsv1.LabelClusterName: name,
-				},
-			},
-		}
-
-		err := c.Create(ctx, &kubevirtCluster)
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		talosControlPlane := controlplanev1.TalosControlPlane{
 			ObjectMeta: metav1.ObjectMeta{
@@ -150,16 +133,107 @@ func TestDockyardsClusterController_Reconcile(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !cluster.Spec.InfrastructureRef.IsDefined() {
-			t.Fatalf("expected cluster spec.infrastructureRef to be set")
-		}
-
 		if !cluster.Spec.ControlPlaneRef.IsDefined() {
 			t.Fatalf("expected cluster spec.controlPlaneRef to be set")
 		}
 
 		if got, want := cluster.Spec.ControlPlaneRef.Name, dockyardsCluster.Name+TalosControlPlaneNameSuffix; got != want {
 			t.Fatalf("expected cluster spec.controlPlaneRef.name to be %q, got %q", want, got)
+		}
+	})
+
+	t.Run("test waits for talos control plane to exist", func(t *testing.T) {
+		dockyardsCluster := dockyardsv1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "test-",
+				Namespace:    namespace.Name,
+			},
+		}
+
+		err := c.Create(ctx, &dockyardsCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      dockyardsCluster.Name,
+				Namespace: dockyardsCluster.Namespace,
+			},
+		}
+
+		_, err = r.Reconcile(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var cluster clusterv1.Cluster
+		err = c.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &cluster)
+		if err == nil {
+			t.Fatalf("expected cluster-api cluster to not be created before talos control plane exists")
+		}
+
+		if client.IgnoreNotFound(err) != nil {
+			t.Fatalf("expected not found error, got %v", err)
+		}
+	})
+
+	t.Run("test preserves existing infrastructureRef", func(t *testing.T) {
+		dockyardsCluster := dockyardsv1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "test-",
+				Namespace:    namespace.Name,
+			},
+		}
+
+		err := c.Create(ctx, &dockyardsCluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		createClusterDependencies(t, dockyardsCluster.Namespace, dockyardsCluster.Name)
+
+		existingInfrastructureRef := clusterv1.ContractVersionedObjectReference{
+			APIGroup: "infrastructure.cluster.x-k8s.io",
+			Kind:     "OpenStackCluster",
+			Name:     "infra-test",
+		}
+
+		cluster := clusterv1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      dockyardsCluster.Name,
+				Namespace: dockyardsCluster.Namespace,
+			},
+			Spec: clusterv1.ClusterSpec{
+				InfrastructureRef: existingInfrastructureRef,
+			},
+		}
+
+		err = c.Create(ctx, &cluster)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      dockyardsCluster.Name,
+				Namespace: dockyardsCluster.Namespace,
+			},
+		}
+
+		_, err = r.Reconcile(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var actual clusterv1.Cluster
+		err = c.Get(ctx, client.ObjectKeyFromObject(&dockyardsCluster), &actual)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if diff := cmp.Diff(existingInfrastructureRef, actual.Spec.InfrastructureRef); diff != "" {
+			t.Fatalf("unexpected infrastructureRef (-want +got): %s", diff)
 		}
 	})
 
@@ -491,34 +565,4 @@ func TestDockyardsClusterController_MapFuncs(t *testing.T) {
 		}
 	})
 
-	t.Run("kubevirt cluster map func", func(t *testing.T) {
-		kv := &providerv1.KubevirtCluster{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "test-ns",
-				Labels: map[string]string{
-					dockyardsv1.LabelClusterName: "test-cluster",
-				},
-			},
-		}
-
-		requests := r.kubevirtClusterToDockyardsCluster(context.Background(), kv)
-		expected := []ctrl.Request{{
-			NamespacedName: types.NamespacedName{Name: "test-cluster", Namespace: "test-ns"},
-		}}
-
-		if diff := cmp.Diff(expected, requests); diff != "" {
-			t.Fatalf("unexpected requests (-want +got): %s", diff)
-		}
-	})
-
-	t.Run("kubevirt cluster map func missing label", func(t *testing.T) {
-		kv := &providerv1.KubevirtCluster{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
-		}
-
-		requests := r.kubevirtClusterToDockyardsCluster(context.Background(), kv)
-		if requests != nil {
-			t.Fatalf("expected nil requests, got %#v", requests)
-		}
-	})
 }
