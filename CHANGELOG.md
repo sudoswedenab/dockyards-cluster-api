@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/sudoswedenab/dockyards-cluster-api/compare/v0.2.0...v0.3.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove infrastructureRef reconciliation
+
+### Features
+
+* resolve talos controlplane via labels ([6a96dcb](https://github.com/sudoswedenab/dockyards-cluster-api/commit/6a96dcbba2dc96d0d71f16d6c34ffb8006f0ea18))
+
+
+### Code Refactoring
+
+* remove infrastructureRef reconciliation ([e61b878](https://github.com/sudoswedenab/dockyards-cluster-api/commit/e61b878e2fff0d7ebd35790abcba639d0ab95f8a))
+
 ## [0.2.0](https://github.com/sudoswedenab/dockyards-cluster-api/compare/v0.1.0...v0.2.0) (2026-09-15)
 
 
